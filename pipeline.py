@@ -8,12 +8,6 @@ Stages:
   4. transcribe_lyrics()-> word-level timestamps (Whisper)
   5. align()            -> merge pitch + lyric timing into per-syllable notes
   6. optimize_fretting() -> DP fingering optimizer -> string/fret per note
-
-NOTE: This is real, runnable code meant for a GPU-capable host (a laptop
-with a decent CPU works for short clips, but Demucs/Whisper are much
-faster on GPU). It has not been executed in this chat session — there is
-no network or GPU available here — so treat first run as a shakeout:
-pin library versions if a call signature has drifted since this was written.
 """
 
 import os
@@ -37,7 +31,7 @@ def retrieve_audio(youtube_url_or_query: str, out_dir: str) -> str:
         target = f"ytsearch1:{target}"
 
     out_template = os.path.join(out_dir, "source.%(ext)s")
-  with tempfile.TemporaryDirectory() as tmp_dir:
+
     cmd = [
         'yt-dlp',
         '-x',
@@ -46,9 +40,10 @@ def retrieve_audio(youtube_url_or_query: str, out_dir: str) -> str:
         '--extractor-args', 'youtube:player_client=mweb,web',
         '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
         '--no-check-certificates',
-        '-o', os.path.join(tmp_dir, 'source.%(ext)s'),
-        youtube_url
+        '-o', out_template,
+        target
     ]
+    
     subprocess.run(cmd, check=True, capture_output=True)
     wav_path = os.path.join(out_dir, "source.wav")
     if not os.path.exists(wav_path):
@@ -178,10 +173,7 @@ def align(words: List[Word], pitch_events: List[PitchEvent]) -> List[AlignedNote
         # collapse consecutive same-pitch-class events into one continuous
         # note when there's effectively no gap between them (detector jitter
         # producing several short back-to-back readings of the same pitch),
-        # while keeping genuinely distinct pitches as separate notes. Checks
-        # the GAP between events, not either event's own duration — checking
-        # duration alone missed the common case of a short spurious blip
-        # immediately followed by the real, longer sustained note.
+        # while keeping genuinely distinct pitches as separate notes.
         merged: List[PitchEvent] = []
         for e in overlapping:
             if merged and merged[-1].note_name[:-1] == e.note_name[:-1] and (e.start - merged[-1].end) < 0.05:
@@ -232,13 +224,7 @@ def optimize_fretting(notes: List[AlignedNote]) -> List[FretPosition]:
     """DP over (note index, string choice) minimizing:
        - impossible positions (fret out of 0..12, or negative) -> excluded
        - hand-position jump distance between consecutive notes (|fret_i - fret_{i-1}|)
-       - a small per-note preference for staying near the nut (lower frets),
-         used only to break ties among otherwise-equal-cost paths so the
-         optimizer doesn't arbitrarily lock onto a high-position fingering
-         when an equally-jump-efficient low-position one exists (verified
-         bug: without this term, a phrase playable entirely at frets 0-2
-         could resolve to frets 5-7 purely by tie-breaking accident on the
-         first note, since all its candidates start at cost 0)
+       - a small per-note preference for staying near the nut (lower frets)
     This keeps fingerings physically playable in one hand position as long
     as possible, instead of a greedy pick that jumps all over the neck.
     """
@@ -257,8 +243,7 @@ def optimize_fretting(notes: List[AlignedNote]) -> List[FretPosition]:
             if 0 <= fret <= MAX_FRET:
                 opts.append((si, fret))
         if not opts:
-            # transpose up an octave if nothing on the neck reaches it (e.g.
-            # detected note was below the guitar's open-string range)
+            # transpose up an octave if nothing on the neck reaches it
             target_midi += 12
             for si, s in enumerate(STRINGS):
                 fret = target_midi - s["open_midi"]
