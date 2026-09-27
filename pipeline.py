@@ -37,17 +37,18 @@ def retrieve_audio(youtube_url_or_query: str, out_dir: str) -> str:
         target = f"ytsearch1:{target}"
 
     out_template = os.path.join(out_dir, "source.%(ext)s")
+  with tempfile.TemporaryDirectory() as tmp_dir:
     cmd = [
-    'yt-dlp',
-    '-x',
-    '--audio-format', 'wav',
-    '--audio-quality', '0',
-    '--extractor-args', 'youtube:player_client=mweb,web',
-    '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
-    '--no-check-certificates',
-    '-o', f'{tmp_dir}/source.%(ext)s',
-    youtube_url
-]
+        'yt-dlp',
+        '-x',
+        '--audio-format', 'wav',
+        '--audio-quality', '0',
+        '--extractor-args', 'youtube:player_client=mweb,web',
+        '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+        '--no-check-certificates',
+        '-o', os.path.join(tmp_dir, 'source.%(ext)s'),
+        youtube_url
+    ]
     subprocess.run(cmd, check=True, capture_output=True)
     wav_path = os.path.join(out_dir, "source.wav")
     if not os.path.exists(wav_path):
