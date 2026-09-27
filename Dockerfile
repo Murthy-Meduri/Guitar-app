@@ -1,16 +1,24 @@
-# Sargam Strings backend. Build with a CUDA base image instead if you have a
-# GPU host available — Demucs/Whisper are dramatically faster on GPU.
 FROM python:3.11-slim
 
-RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg git \
+# Install system dependencies including ffmpeg
+RUN apt-get update && apt-get install -y \
+    ffmpeg \
+    git \
+    build-essential \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
+
+# Upgrade build tools to prevent 'pkg_resources' errors
+RUN pip install --no-cache-dir --upgrade pip setuptools wheel
+
+# Copy requirements and install dependencies
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
+# Copy application code
 COPY . .
 
-ENV PORT=8000
+# Expose port and run uvicorn
 EXPOSE 8000
 CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
