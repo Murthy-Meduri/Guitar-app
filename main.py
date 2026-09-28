@@ -299,4 +299,4 @@ def get_song(song_id: str):
 
 @app.get("/health")
 def health():
-    return {"status": "ok", "version": "instant-pitch-v1"}
+    return {"status": "ok", "version": "pure-instant-v1"}

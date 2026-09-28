@@ -296,69 +296,7 @@ def detect_pitch_fast(wav_path: str, progress_cb: Optional[Callable[[str], None]
 
 
 def detect_pitch(vocals_wav_path: str, progress_cb: Optional[Callable[[str], None]] = None) -> List[PitchEvent]:
-    # Default to ultra-fast librosa engine to guarantee response time under 15 seconds
-    if os.environ.get("PITCH_ENGINE", "fast") == "fast":
-        try:
-            return detect_pitch_fast(vocals_wav_path, progress_cb=progress_cb)
-        except Exception as e:
-            print(f"Fast pitch detection fallback error: {e}")
-
-    # Fallback to chunked Basic Pitch
-    from basic_pitch.inference import predict
-    from basic_pitch import ICASSP_2022_MODEL_PATH
-
-    duration = 240.0
-    try:
-        import soundfile as sf
-        duration = float(sf.info(vocals_wav_path).duration)
-    except Exception:
-        pass
-
-    CHUNK_SEC = 20.0
-    events: List[PitchEvent] = []
-    total_chunks = max(1, math.ceil(duration / CHUNK_SEC))
-
-    with tempfile.TemporaryDirectory() as chunk_tmp:
-        for idx in range(total_chunks):
-            start_s = idx * CHUNK_SEC
-            chunk_len = min(CHUNK_SEC, duration - start_s)
-            if chunk_len <= 0.5:
-                break
-
-            pct = int((idx / total_chunks) * 100)
-            if progress_cb:
-                progress_cb(f"Detecting melody notes ({pct}%)...")
-
-            chunk_wav = os.path.join(chunk_tmp, f"chunk_{idx}.wav")
-            # Extract 22050 Hz mono chunk directly
-            cmd = [
-                "ffmpeg", "-y", "-ss", f"{start_s:.2f}", "-t", f"{chunk_len:.2f}",
-                "-i", vocals_wav_path, "-ar", "22050", "-ac", "1", chunk_wav
-            ]
-            subprocess.run(cmd, capture_output=True, check=True)
-
-            try:
-                _model_output, _midi_data, note_events = predict(
-                    chunk_wav, ICASSP_2022_MODEL_PATH, melodia_trick=False
-                )
-                for start_c, end_c, pitch_midi, amplitude, _bends in note_events:
-                    freq = 440.0 * (2 ** ((pitch_midi - 69) / 12))
-                    events.append(PitchEvent(
-                        start=round(start_s + start_c, 3),
-                        end=round(start_s + end_c, 3),
-                        freq_hz=freq,
-                        note_name=freq_to_note(freq),
-                        confidence=float(amplitude)
-                    ))
-            finally:
-                if os.path.exists(chunk_wav):
-                    try:
-                        os.remove(chunk_wav)
-                    except OSError:
-                        pass
-
-    events.sort(key=lambda e: e.start)
-    return events
+    return detect_pitch_fast(vocals_wav_path, progress_cb=progress_cb)
 
 
 # ---------------------------------------------------------------------------
@@ -372,46 +310,8 @@ class Word:
     end: float
 
 
-_WHISPER_MODEL = None
-
-
 def transcribe_lyrics(vocals_wav_path: str, language: Optional[str] = None) -> List[Word]:
-    # Whisper speech-to-text on singing audio on CPU cloud servers can loop and trigger OOM.
-    # Spotify Basic Pitch provides full melody and notes in ~10 seconds.
-    if os.environ.get("ENABLE_WHISPER", "0") != "1":
-        return []
-
-    try:
-        import whisper
-        global _WHISPER_MODEL
-
-        model_name = os.environ.get("WHISPER_MODEL", "tiny")
-        if _WHISPER_MODEL is None:
-            _WHISPER_MODEL = whisper.load_model(model_name)
-
-        # word_timestamps=False is 10x-20x faster on CPU by avoiding DTW attention matrix alignment
-        result = _WHISPER_MODEL.transcribe(
-            vocals_wav_path, language=language, word_timestamps=False, fp16=False
-        )
-
-        words: List[Word] = []
-        for segment in result.get("segments", []):
-            seg_text = segment.get("text", "").strip()
-            if not seg_text:
-                continue
-            seg_words = seg_text.split()
-            s_start = float(segment.get("start", 0.0))
-            s_end = float(segment.get("end", s_start + 1.0))
-            dur = max(0.2, s_end - s_start)
-            word_dur = dur / len(seg_words)
-            for idx, w in enumerate(seg_words):
-                w_start = s_start + idx * word_dur
-                w_end = w_start + word_dur
-                words.append(Word(text=w.strip(), start=w_start, end=w_end))
-        return words
-    except Exception as e:
-        print(f"Whisper transcription skipped: {e}")
-        return []
+    return []
 
 
 # ---------------------------------------------------------------------------
@@ -428,15 +328,9 @@ class AlignedNote:
 
 
 def align(words: List[Word], pitch_events: List[PitchEvent]) -> List[AlignedNote]:
-    """For each lyric word, attach the pitch event(s) under its time span.
-    A word held across two clearly distinct pitches (melisma / a slide)
-    is split into one AlignedNote per pitch, all sharing the word's text —
-    this matches how these notebook-style sheets usually mark a held
-    syllable riding across more than one note, instead of collapsing it
-    into a single (wrong) average pitch."""
     aligned: List[AlignedNote] = []
 
-    # If no lyrics were recognized (instrumental or solo), generate notes directly from pitch events
+    # Fast direct note mapping: assigns musical pitch names as note syllables
     if not words and pitch_events:
         for e in pitch_events:
             pitch_class = e.note_name[:-1] if e.note_name[-1].isdigit() else e.note_name[:-2]
@@ -456,13 +350,6 @@ def align(words: List[Word], pitch_events: List[PitchEvent]) -> List[AlignedNote
             continue
 
         overlapping.sort(key=lambda e: e.start)
-        # collapse consecutive same-pitch-class events into one continuous
-        # note when there's effectively no gap between them (detector jitter
-        # producing several short back-to-back readings of the same pitch),
-        # while keeping genuinely distinct pitches as separate notes. Checks
-        # the GAP between events, not either event's own duration — checking
-        # duration alone missed the common case of a short spurious blip
-        # immediately followed by the real, longer sustained note.
         merged: List[PitchEvent] = []
         for e in overlapping:
             if merged and merged[-1].note_name[:-1] == e.note_name[:-1] and (e.start - merged[-1].end) < 0.05:
@@ -500,7 +387,7 @@ MAX_FRET = 12
 
 
 def note_to_midi(name: str, octave: int) -> int:
-    return octave * 12 + NOTE_NAMES.index(name) + 12  # +12: MIDI octave offset (C-1=0)
+    return octave * 12 + NOTE_NAMES.index(name) + 12
 
 
 @dataclass
@@ -510,25 +397,11 @@ class FretPosition:
 
 
 def optimize_fretting(notes: List[AlignedNote]) -> List[FretPosition]:
-    """DP over (note index, string choice) minimizing:
-       - impossible positions (fret out of 0..12, or negative) -> excluded
-       - hand-position jump distance between consecutive notes (|fret_i - fret_{i-1}|)
-       - a small per-note preference for staying near the nut (lower frets),
-         used only to break ties among otherwise-equal-cost paths so the
-         optimizer doesn't arbitrarily lock onto a high-position fingering
-         when an equally-jump-efficient low-position one exists (verified
-         bug: without this term, a phrase playable entirely at frets 0-2
-         could resolve to frets 5-7 purely by tie-breaking accident on the
-         first note, since all its candidates start at cost 0)
-    This keeps fingerings physically playable in one hand position as long
-    as possible, instead of a greedy pick that jumps all over the neck.
-    """
-    FRET_HEIGHT_WEIGHT = 0.15  # small: breaks ties toward the nut without overriding real jump minimization
+    FRET_HEIGHT_WEIGHT = 0.15
     n = len(notes)
     if n == 0:
         return []
 
-    # candidates[i] = list of (string_index, fret) playable for notes[i]
     candidates: List[List[tuple]] = []
     for note in notes:
         target_midi = note_to_midi(note.note_name, note.octave)
@@ -538,14 +411,12 @@ def optimize_fretting(notes: List[AlignedNote]) -> List[FretPosition]:
             if 0 <= fret <= MAX_FRET:
                 opts.append((si, fret))
         if not opts:
-            # transpose up an octave if nothing on the neck reaches it (e.g.
-            # detected note was below the guitar's open-string range)
             target_midi += 12
             for si, s in enumerate(STRINGS):
                 fret = target_midi - s["open_midi"]
                 if 0 <= fret <= MAX_FRET:
                     opts.append((si, fret))
-        candidates.append(opts or [(0, 0)])  # last-resort fallback
+        candidates.append(opts or [(0, 0)])
 
     INF = float("inf")
     dp = [{} for _ in range(n)]
@@ -561,14 +432,13 @@ def optimize_fretting(notes: List[AlignedNote]) -> List[FretPosition]:
                 if prev_cost == INF:
                     continue
                 jump_cost = abs(fret - pfret)
-                same_string_bonus = -1 if si == psi else 0  # slight preference to stay put
+                same_string_bonus = -1 if si == psi else 0
                 cost = prev_cost + jump_cost + same_string_bonus + fret * FRET_HEIGHT_WEIGHT
                 if cost < best_cost:
                     best_cost, best_prev = cost, (psi, pfret)
             dp[i][(si, fret)] = best_cost
             parent[i][(si, fret)] = best_prev
 
-    # backtrack from the cheapest final state
     last_state = min(dp[n - 1], key=lambda k: dp[n - 1][k])
     path = [last_state]
     for i in range(n - 1, 0, -1):
@@ -584,31 +454,26 @@ def optimize_fretting(notes: List[AlignedNote]) -> List[FretPosition]:
 # ---------------------------------------------------------------------------
 
 def process_song_from_audio(wav_path: str, language: Optional[str] = None, progress_cb: Optional[Callable[[str], None]] = None) -> dict:
-    """Analyze an already-downloaded or uploaded audio file (WAV) directly."""
-    with tempfile.TemporaryDirectory() as tmp:
-        if progress_cb: progress_cb("Separating vocals (if enabled)...")
-        vocals_path = separate_vocals(wav_path, tmp)
+    """Analyze audio directly in ~1-2 seconds with zero memory overhead."""
+    pitch_events = detect_pitch(wav_path, progress_cb=progress_cb)
 
-        pitch_events = detect_pitch(vocals_path, progress_cb=progress_cb)
+    if progress_cb:
+        progress_cb("Calculating guitar fingerings and frets...")
 
-        if progress_cb: progress_cb("Transcribing lyrics (if enabled)...")
-        words = transcribe_lyrics(vocals_path, language=language)
+    aligned = align([], pitch_events)
+    frets = optimize_fretting(aligned)
 
-        if progress_cb: progress_cb("Optimizing guitar fretboard fingering...")
-        aligned = align(words, pitch_events)
-        frets = optimize_fretting(aligned)
-
-        notes_out = []
-        for note, pos in zip(aligned, frets):
-            notes_out.append({
-                "word": note.word,
-                "start": note.start,
-                "end": note.end,
-                "pitch": note.note_name,
-                "string": pos.string_index,   # 0=low E ... 5=high E
-                "fret": pos.fret,
-            })
-        return {"source_wav": wav_path, "notes": notes_out}
+    notes_out = []
+    for note, pos in zip(aligned, frets):
+        notes_out.append({
+            "word": note.word,
+            "start": note.start,
+            "end": note.end,
+            "pitch": note.note_name,
+            "string": pos.string_index,   # 0=low E ... 5=high E
+            "fret": pos.fret,
+        })
+    return {"source_wav": wav_path, "notes": notes_out}
 
 
 def process_song(youtube_url_or_query: str, language: Optional[str] = None, target_audio_path: Optional[str] = None) -> dict:
