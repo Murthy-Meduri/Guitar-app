@@ -38,12 +38,12 @@ def get_youtube_url_via_api(query: str, api_key: str) -> Optional[str]:
 
 
 def retrieve_audio(youtube_url_or_query: str, out_dir: str) -> str:
-    """Download best-quality audio via yt-dlp using YouTube API, environment cookies, or fallback args."""
+    """Download best-quality audio via yt-dlp using YouTube API, local/env cookies, or fallback args."""
     target = youtube_url_or_query
 
-    # If it's a search query and API key exists, resolve to video URL via YouTube Data API v3
+    # If it's a search query, resolve to video URL via YouTube Data API v3
     if not target.startswith("http"):
-        api_key = os.getenv("AIzaSyC8FCz8lLbeYzq8UrME24FI8RZoqeZNzKc")
+        api_key = os.getenv("YOUTUBE_API_KEY", "AIzaSyC8FCz8lLbeYzq8UrME24FI8RZoqeZNzKc")
         if api_key:
             resolved_url = get_youtube_url_via_api(target, api_key)
             if resolved_url:
@@ -63,17 +63,24 @@ def retrieve_audio(youtube_url_or_query: str, out_dir: str) -> str:
         '--no-check-certificates',
     ]
 
-    # Handle cookies on Render via environment variable
+    # Handle cookies via repo file, Render Secret file, or environment variable
+    repo_cookie_file = os.path.join(os.path.dirname(__file__), "youtube_cookies.txt")
+    secret_cookie_file = "/etc/secrets/youtube_cookies.txt"
     cookies_env = os.getenv("YOUTUBE_COOKIES")
+
     cookie_file_path = None
 
-    if cookies_env:
+    if os.path.exists(repo_cookie_file):
+        cmd.extend(['--cookies', repo_cookie_file])
+    elif os.path.exists(secret_cookie_file):
+        cmd.extend(['--cookies', secret_cookie_file])
+    elif cookies_env:
         cookie_file_path = os.path.join(out_dir, "youtube_cookies.txt")
         with open(cookie_file_path, "w", encoding="utf-8") as f:
             f.write(cookies_env)
         cmd.extend(['--cookies', cookie_file_path])
     else:
-        # Fallback flags if cookies env is missing
+        # Fallback flags if no cookies are available
         cmd.extend([
             '--extractor-args', 'youtube:player_client=android,ios',
             '--user-agent', 'Mozilla/5.0 (Android 14; Mobile; rv:128.0) Gecko/128.0 Firefox/128.0'
