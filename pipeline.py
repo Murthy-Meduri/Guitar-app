@@ -17,7 +17,9 @@ pin library versions if a call signature has drifted since this was written.
 """
 
 import os
+import sys
 import math
+import shutil
 import subprocess
 import tempfile
 from dataclasses import dataclass, field
@@ -32,26 +34,33 @@ import numpy as np
 def retrieve_audio(youtube_url_or_query: str, out_dir: str) -> str:
     """Download best-quality audio via yt-dlp. Accepts a URL or a search query
     (falls back to `ytsearch1:` for plain text queries)."""
-    target = youtube_url_or_query
-    if not target.startswith("http"):
+    target = youtube_url_or_query.strip()
+    if target.startswith("http"):
+        target = target.split("?si=")[0].split("&si=")[0]
+    else:
         target = f"ytsearch1:{target}"
 
     out_template = os.path.join(out_dir, "source.%(ext)s")
-    cmd = [
-        "yt-dlp",
+    ytdlp_bin = shutil.which("yt-dlp")
+    ytdlp_base = [ytdlp_bin] if ytdlp_bin else [sys.executable, "-m", "yt_dlp"]
+    cmd = ytdlp_base + [
         "-x", "--audio-format", "wav",
         "--audio-quality", "0",
         "--no-playlist",
+        "--no-check-certificates",
+        "--extractor-args", "youtube:player_client=ios,android,web",
         "-o", out_template,
     ]
 
-    # YouTube blocks most datacenter IPs ("Sign in to confirm you're not a
-    # bot"). Optional workaround: supply exported browser cookies via env var
-    # YT_COOKIES_B64 (base64 of a Netscape-format cookies.txt) or
-    # YT_COOKIES_FILE (path). Cookies expire and can get an account flagged,
-    # so use a throwaway account. Optional proxy: YT_PROXY (e.g. residential).
+    # YouTube blocks datacenter IPs without authentication.
+    # Cookie resolution order:
+    # 1. Base64 environment variable YT_COOKIES_B64
+    # 2. Path in YT_COOKIES_FILE
+    # 3. Local cookies.txt next to this file
     cookies_b64 = os.environ.get("YT_COOKIES_B64")
     cookies_file = os.environ.get("YT_COOKIES_FILE")
+    local_cookies = os.path.join(os.path.dirname(os.path.abspath(__file__)), "cookies.txt")
+
     if cookies_b64:
         import base64
         cookies_path = os.path.join(out_dir, "cookies.txt")
@@ -60,14 +69,17 @@ def retrieve_audio(youtube_url_or_query: str, out_dir: str) -> str:
         cmd += ["--cookies", cookies_path]
     elif cookies_file and os.path.exists(cookies_file):
         cmd += ["--cookies", cookies_file]
+    elif os.path.exists(local_cookies) and os.path.getsize(local_cookies) > 0:
+        cmd += ["--cookies", local_cookies]
+
     if os.environ.get("YT_PROXY"):
         cmd += ["--proxy", os.environ["YT_PROXY"]]
 
     cmd.append(target)
     result = subprocess.run(cmd, capture_output=True, text=True)
     if result.returncode != 0:
-        tail = (result.stderr or "").strip().splitlines()[-3:]
-        raise RuntimeError("yt-dlp failed: " + " | ".join(tail))
+        err_msg = (result.stderr or result.stdout or "Unknown error").strip()
+        raise RuntimeError(f"yt-dlp failed with exit code {result.returncode}.\nError logs:\n{err_msg}")
     wav_path = os.path.join(out_dir, "source.wav")
     if not os.path.exists(wav_path):
         raise FileNotFoundError("yt-dlp did not produce the expected wav file")
@@ -153,7 +165,8 @@ class Word:
 def transcribe_lyrics(vocals_wav_path: str, language: Optional[str] = None) -> List[Word]:
     import whisper
 
-    model = whisper.load_model("small")
+    model_name = os.environ.get("WHISPER_MODEL", "base")
+    model = whisper.load_model(model_name)
     result = model.transcribe(vocals_wav_path, language=language, word_timestamps=True)
 
     words: List[Word] = []
@@ -320,9 +333,15 @@ def optimize_fretting(notes: List[AlignedNote]) -> List[FretPosition]:
 # Orchestration
 # ---------------------------------------------------------------------------
 
-def process_song(youtube_url_or_query: str, language: Optional[str] = None) -> dict:
+def process_song(youtube_url_or_query: str, language: Optional[str] = None, target_audio_path: Optional[str] = None) -> dict:
     with tempfile.TemporaryDirectory() as tmp:
         wav_path = retrieve_audio(youtube_url_or_query, tmp)
+        if target_audio_path:
+            shutil.copy(wav_path, target_audio_path)
+            persisted_wav = target_audio_path
+        else:
+            persisted_wav = wav_path
+
         vocals_path = separate_vocals(wav_path, tmp)
         pitch_events = detect_pitch(vocals_path)
         words = transcribe_lyrics(vocals_path, language=language)
@@ -339,4 +358,4 @@ def process_song(youtube_url_or_query: str, language: Optional[str] = None) -> d
                 "string": pos.string_index,   # 0=low E ... 5=high E
                 "fret": pos.fret,
             })
-        return {"source_wav": wav_path, "notes": notes_out}
+        return {"source_wav": persisted_wav, "notes": notes_out}

@@ -81,14 +81,21 @@ def _run_job(job_id: str, query: str, language: str | None):
     job_dir = os.path.join(JOBS_DIR, job_id)
     os.makedirs(job_dir, exist_ok=True)
     try:
-        result = process_song(query, language=language)
         persisted_audio = os.path.join(job_dir, "audio.wav")
-        shutil.copy(result["source_wav"], persisted_audio)
+        result = process_song(query, language=language, target_audio_path=persisted_audio)
         JOBS[job_id]["status"] = "done"
         JOBS[job_id]["result"] = {"notes": result["notes"], "audio_url": f"/audio/{job_id}"}
     except Exception as e:  # noqa: BLE001 — surface any pipeline failure to the client
         JOBS[job_id]["status"] = "error"
         JOBS[job_id]["error"] = str(e)
+
+
+@app.get("/")
+def read_root():
+    index_path = os.path.join(os.path.dirname(__file__), "index.html")
+    if os.path.exists(index_path):
+        return FileResponse(index_path, media_type="text/html")
+    raise HTTPException(404, "index.html not found")
 
 
 @app.post("/process")
