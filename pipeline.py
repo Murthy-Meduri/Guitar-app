@@ -264,6 +264,11 @@ _WHISPER_MODEL = None
 
 
 def transcribe_lyrics(vocals_wav_path: str, language: Optional[str] = None) -> List[Word]:
+    # Whisper speech-to-text on singing audio on CPU cloud servers can loop and trigger OOM.
+    # Spotify Basic Pitch provides full melody and notes in ~10 seconds.
+    if os.environ.get("ENABLE_WHISPER", "0") != "1":
+        return []
+
     try:
         import whisper
         global _WHISPER_MODEL

@@ -65,6 +65,32 @@ os.makedirs(SONGS_DIR, exist_ok=True)
 # job_id -> {"status": "queued"|"running"|"done"|"error", "result": {...}, "error": str}
 JOBS: dict = {}
 
+
+def _save_job(job_id: str):
+    try:
+        job_dir = os.path.join(JOBS_DIR, job_id)
+        os.makedirs(job_dir, exist_ok=True)
+        with open(os.path.join(job_dir, "job.json"), "w") as f:
+            json.dump(JOBS.get(job_id, {}), f)
+    except Exception:
+        pass
+
+
+def _get_job(job_id: str):
+    if job_id in JOBS:
+        return JOBS[job_id]
+    job_file = os.path.join(JOBS_DIR, job_id, "job.json")
+    if os.path.exists(job_file):
+        try:
+            with open(job_file) as f:
+                data = json.load(f)
+                JOBS[job_id] = data
+                return data
+        except Exception:
+            pass
+    return None
+
+
 # --- naive per-IP rate limiter (in-memory; fine for single-instance dev/small deploys) ---
 _request_log: dict = defaultdict(deque)
 
@@ -107,6 +133,7 @@ def _run_job(job_id: str, query: str, language: str | None):
 def _run_audio_job(job_id: str, raw_audio_path: str, language: str | None):
     JOBS[job_id]["status"] = "running"
     JOBS[job_id]["step"] = "Converting audio to WAV format..."
+    _save_job(job_id)
     job_dir = os.path.join(JOBS_DIR, job_id)
     os.makedirs(job_dir, exist_ok=True)
     persisted_audio = os.path.join(job_dir, "audio.wav")
@@ -119,15 +146,18 @@ def _run_audio_job(job_id: str, raw_audio_path: str, language: str | None):
 
         def progress_cb(msg: str):
             JOBS[job_id]["step"] = msg
+            _save_job(job_id)
 
         result = process_song_from_audio(persisted_audio, language=language, progress_cb=progress_cb)
         JOBS[job_id]["status"] = "done"
         JOBS[job_id]["step"] = "Complete"
         JOBS[job_id]["result"] = {"notes": result["notes"], "audio_url": f"/audio/{job_id}"}
+        _save_job(job_id)
     except Exception as e:
         import traceback
         JOBS[job_id]["status"] = "error"
         JOBS[job_id]["error"] = f"{type(e).__name__}: {e}\n{traceback.format_exc()}"
+        _save_job(job_id)
     finally:
         if os.path.exists(raw_audio_path) and os.path.abspath(raw_audio_path) != os.path.abspath(persisted_audio):
             try:
@@ -215,13 +245,14 @@ async def process_audio(
         shutil.copyfileobj(file.file, f)
 
     JOBS[job_id] = {"status": "queued", "result": None, "error": None}
+    _save_job(job_id)
     background_tasks.add_task(_run_audio_job, job_id, raw_path, language)
     return {"job_id": job_id, "status": "queued"}
 
 
 @app.get("/status/{job_id}")
 def status(job_id: str):
-    job = JOBS.get(job_id)
+    job = _get_job(job_id)
     if not job:
         raise HTTPException(404, "job not found")
     return job
@@ -262,4 +293,4 @@ def get_song(song_id: str):
 
 @app.get("/health")
 def health():
-    return {"status": "ok", "version": "turbo-pitch-v1"}
+    return {"status": "ok", "version": "ultra-pitch-v1"}
