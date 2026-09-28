@@ -43,23 +43,19 @@ def retrieve_audio(youtube_url_or_query: str, out_dir: str) -> str:
     out_template = os.path.join(out_dir, "source.%(ext)s")
     ytdlp_bin = shutil.which("yt-dlp")
     ytdlp_base = [ytdlp_bin] if ytdlp_bin else [sys.executable, "-m", "yt_dlp"]
+    # Use visionos and mediaconnect clients which bypass Google BotGuard and do NOT require sign-in
     cmd = ytdlp_base + [
         "-x", "--audio-format", "wav",
         "--audio-quality", "0",
         "--no-playlist",
         "--no-check-certificates",
-        "--extractor-args", "youtube:player_client=ios,android,web",
+        "--extractor-args", "youtube:player_client=visionos,mediaconnect",
         "-o", out_template,
     ]
 
-    # YouTube blocks datacenter IPs without authentication.
-    # Cookie resolution order:
-    # 1. Base64 environment variable YT_COOKIES_B64
-    # 2. Path in YT_COOKIES_FILE
-    # 3. Local cookies.txt next to this file
+    # Optional cookies if explicitly passed via environment variable
     cookies_b64 = os.environ.get("YT_COOKIES_B64")
     cookies_file = os.environ.get("YT_COOKIES_FILE")
-    local_cookies = os.path.join(os.path.dirname(os.path.abspath(__file__)), "cookies.txt")
 
     if cookies_b64:
         import base64
@@ -69,8 +65,6 @@ def retrieve_audio(youtube_url_or_query: str, out_dir: str) -> str:
         cmd += ["--cookies", cookies_path]
     elif cookies_file and os.path.exists(cookies_file):
         cmd += ["--cookies", cookies_file]
-    elif os.path.exists(local_cookies) and os.path.getsize(local_cookies) > 0:
-        cmd += ["--cookies", local_cookies]
 
     if os.environ.get("YT_PROXY"):
         cmd += ["--proxy", os.environ["YT_PROXY"]]
