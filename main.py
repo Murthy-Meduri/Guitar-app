@@ -20,16 +20,17 @@ Run locally:
 import json
 import os
 import shutil
+import subprocess
 import time
 import uuid
 from collections import defaultdict, deque
 
-from fastapi import BackgroundTasks, FastAPI, Header, HTTPException, Request
+from fastapi import BackgroundTasks, FastAPI, File, Form, Header, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
-from pipeline import process_song
+from pipeline import process_song, process_song_from_audio
 
 app = FastAPI(title="Sargam Strings API")
 
@@ -97,6 +98,33 @@ def _run_job(job_id: str, query: str, language: str | None):
         JOBS[job_id]["error"] = f"{type(e).__name__}: {e}\n{traceback.format_exc()}"
 
 
+def _run_audio_job(job_id: str, raw_audio_path: str, language: str | None):
+    JOBS[job_id]["status"] = "running"
+    job_dir = os.path.join(JOBS_DIR, job_id)
+    os.makedirs(job_dir, exist_ok=True)
+    persisted_audio = os.path.join(job_dir, "audio.wav")
+    try:
+        # Convert raw uploaded audio (mp3, webm, m4a, etc.) to 44100Hz mono wav
+        cmd = ["ffmpeg", "-y", "-i", raw_audio_path, "-ar", "44100", "-ac", "1", persisted_audio]
+        conv_res = subprocess.run(cmd, capture_output=True, text=True)
+        if conv_res.returncode != 0:
+            raise RuntimeError(f"ffmpeg conversion failed: {conv_res.stderr or conv_res.stdout}")
+
+        result = process_song_from_audio(persisted_audio, language=language)
+        JOBS[job_id]["status"] = "done"
+        JOBS[job_id]["result"] = {"notes": result["notes"], "audio_url": f"/audio/{job_id}"}
+    except Exception as e:
+        import traceback
+        JOBS[job_id]["status"] = "error"
+        JOBS[job_id]["error"] = f"{type(e).__name__}: {e}\n{traceback.format_exc()}"
+    finally:
+        if os.path.exists(raw_audio_path) and os.path.abspath(raw_audio_path) != os.path.abspath(persisted_audio):
+            try:
+                os.remove(raw_audio_path)
+            except OSError:
+                pass
+
+
 @app.get("/debug-rapidapi/{video_id}")
 def debug_rapidapi(video_id: str):
     import urllib.request
@@ -149,6 +177,34 @@ def process(req: ProcessRequest, request: Request, background_tasks: BackgroundT
     job_id = str(uuid.uuid4())
     JOBS[job_id] = {"status": "queued", "result": None, "error": None}
     background_tasks.add_task(_run_job, job_id, req.query, req.language)
+    return {"job_id": job_id, "status": "queued"}
+
+
+@app.post("/process-audio")
+async def process_audio(
+    request: Request,
+    background_tasks: BackgroundTasks,
+    file: UploadFile = File(...),
+    query: str | None = Form(default=None),
+    language: str | None = Form(default=None),
+    x_api_key: str | None = Header(default=None)
+):
+    check_api_key(x_api_key)
+    check_rate_limit(request.client.host if request.client else "unknown")
+
+    job_id = str(uuid.uuid4())
+    job_dir = os.path.join(JOBS_DIR, job_id)
+    os.makedirs(job_dir, exist_ok=True)
+
+    filename = file.filename or "upload.mp3"
+    ext = os.path.splitext(filename)[1] or ".mp3"
+    raw_path = os.path.join(job_dir, f"input{ext}")
+
+    with open(raw_path, "wb") as f:
+        shutil.copyfileobj(file.file, f)
+
+    JOBS[job_id] = {"status": "queued", "result": None, "error": None}
+    background_tasks.add_task(_run_audio_job, job_id, raw_path, language)
     return {"job_id": job_id, "status": "queued"}
 
 

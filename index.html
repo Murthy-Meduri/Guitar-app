@@ -294,34 +294,124 @@ function wireAudioSync(song){
   };
 }
 let loopA=0, loopB=0, loopActive=false;
+function extractVideoId(urlOrText){
+  if(!urlOrText) return null;
+  const str = urlOrText.trim();
+  const patterns = [
+    /(?:v=|\/embed\/|\/v\/|youtu\.be\/|\/shorts\/)([a-zA-Z0-9_-]{11})/,
+    /^([a-zA-Z0-9_-]{11})$/
+  ];
+  for(const p of patterns){
+    const m = str.match(p);
+    if(m) return m[1];
+  }
+  return null;
+}
+
+const RAPIDAPI_KEY = "3252427cd0msh1e6df2ca0f9eeb6p13901cjsn25e93e92623b";
+
 document.getElementById("fetchBtn").onclick=async ()=>{
   const q=document.getElementById("ytQuery").value.trim();
   const status=document.getElementById("apiStatus");
   if(!q) return;
   if(!API_BASE_URL){ status.textContent="No backend configured — set API_BASE_URL at the top of the script to your deployed /backend service. Showing offline demo below."; return; }
-  status.textContent="Queuing job…";
+
+  let job_id = null;
+  const videoId = extractVideoId(q);
+
   try{
-    const startRes=await fetch(API_BASE_URL+"/process",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({query:q})});
-    if(!startRes.ok) throw new Error(await startRes.text());
-    const {job_id}=await startRes.json();
-    status.textContent="Processing… separation + pitch detection + transcription can take a minute. (job "+job_id.slice(0,8)+")";
-    let data=null;
-    for(let tries=0;tries<120;tries++){
-      await new Promise(r=>setTimeout(r,2000));
-      const sr=await fetch(API_BASE_URL+"/status/"+job_id);
-      const sj=await sr.json();
-      if(sj.status==="done"){ data=sj.result; break; }
-      if(sj.status==="error") throw new Error(sj.error||"pipeline failed");
-      status.textContent=`Processing… (${sj.status}, ${tries*2}s elapsed)`;
+    if(videoId){
+      status.textContent = "Connecting to YouTube audio stream bridge…";
+      let dlLink = null;
+      for(let attempt = 0; attempt < 25; attempt++){
+        try{
+          const rRes = await fetch(`https://youtube-mp36.p.rapidapi.com/dl?id=${videoId}`, {
+            headers: {
+              "x-rapidapi-key": RAPIDAPI_KEY,
+              "x-rapidapi-host": "youtube-mp36.p.rapidapi.com"
+            }
+          });
+          if(rRes.ok){
+            const rData = await rRes.json();
+            if(rData.status === "ok" && (rData.progress === 100 || rData.progress == null) && rData.link){
+              dlLink = rData.link;
+              break;
+            }
+            if(rData.status === "fail") throw new Error(rData.msg || "Audio conversion failed");
+            status.textContent = `Converting YouTube audio (${rData.progress || 0}%)…`;
+          }
+        }catch(err){
+          console.warn("Bridge poll attempt:", err);
+        }
+        await new Promise(r => setTimeout(r, 2500));
+      }
+
+      if(dlLink){
+        status.textContent = "Streaming audio stream to browser…";
+        let audioBlob = null;
+        for(let dlAttempt = 0; dlAttempt < 5; dlAttempt++){
+          try{
+            const dlRes = await fetch(dlLink);
+            if(dlRes.ok){
+              audioBlob = await dlRes.blob();
+              break;
+            }
+          }catch(e){
+            console.warn("Audio download retry:", e);
+          }
+          await new Promise(r => setTimeout(r, 2000));
+        }
+
+        if(audioBlob){
+          status.textContent = `Uploading audio to AI engine (${(audioBlob.size / (1024 * 1024)).toFixed(1)} MB)…`;
+          const formData = new FormData();
+          formData.append("file", audioBlob, `${videoId}.mp3`);
+          formData.append("query", q);
+          const startRes = await fetch(API_BASE_URL + "/process-audio", {
+            method: "POST",
+            body: formData
+          });
+          if(!startRes.ok) throw new Error(await startRes.text());
+          const j = await startRes.json();
+          job_id = j.job_id;
+        }
+      }
     }
+
+    // Fallback to /process if not a direct YouTube ID or if client bridge did not start a job
+    if(!job_id){
+      status.textContent = "Queuing job on AI server…";
+      const startRes = await fetch(API_BASE_URL + "/process", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ query: q })
+      });
+      if(!startRes.ok) throw new Error(await startRes.text());
+      const j = await startRes.json();
+      job_id = j.job_id;
+    }
+
+    status.textContent = "Processing… Demucs vocal separation + Basic Pitch + Whisper AI in progress. (job " + job_id.slice(0,8) + ")";
+    let data = null;
+    for(let tries = 0; tries < 150; tries++){
+      await new Promise(r => setTimeout(r, 2000));
+      const sr = await fetch(API_BASE_URL + "/status/" + job_id);
+      const sj = await sr.json();
+      if(sj.status === "done"){ data = sj.result; break; }
+      if(sj.status === "error") throw new Error(sj.error || "pipeline failed");
+      status.textContent = `Processing… (${sj.status}, ${tries * 2}s elapsed)`;
+    }
+
     if(!data) throw new Error("timed out waiting for the job to finish");
-    const song=notesToSong(q,data.notes);
-    songs.push(song); refreshAll(); songSel.value=songs.length-1; currentSong=song;
+    const song = notesToSong(q, data.notes);
+    songs.push(song); refreshAll(); songSel.value = songs.length - 1; currentSong = song;
     renderMeta(); renderChords(); renderNotation();
-    realAudio.src=API_BASE_URL+data.audio_url; realAudio.style.display="block";
+    realAudio.src = API_BASE_URL + data.audio_url; realAudio.style.display = "block";
     wireAudioSync(song);
-    status.textContent="Loaded from the AI pipeline. Use the audio player above — the fretboard and lyric highlight now follow real playback.";
-  }catch(e){ status.textContent="Fetch failed: "+e.message; }
+    status.textContent = "Loaded from the AI pipeline! Click Play below — the fretboard, tablature, and lyric highlight follow the audio in real time.";
+  }catch(e){
+    status.textContent = "Fetch failed: " + e.message;
+  }
 };
 
 // ---------- Song data ----------

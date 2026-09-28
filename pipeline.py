@@ -278,6 +278,18 @@ def align(words: List[Word], pitch_events: List[PitchEvent]) -> List[AlignedNote
     syllable riding across more than one note, instead of collapsing it
     into a single (wrong) average pitch."""
     aligned: List[AlignedNote] = []
+
+    # If no lyrics were recognized (instrumental or solo), generate notes directly from pitch events
+    if not words and pitch_events:
+        for e in pitch_events:
+            pitch_class = e.note_name[:-1] if e.note_name[-1].isdigit() else e.note_name[:-2]
+            octave = int("".join(filter(str.isdigit, e.note_name)) or 4)
+            aligned.append(AlignedNote(
+                word=pitch_class, start=e.start, end=e.end,
+                note_name=pitch_class, octave=octave,
+            ))
+        return aligned
+
     for w in words:
         overlapping = [e for e in pitch_events if e.start < w.end and e.end > w.start]
         if not overlapping:
@@ -414,15 +426,9 @@ def optimize_fretting(notes: List[AlignedNote]) -> List[FretPosition]:
 # Orchestration
 # ---------------------------------------------------------------------------
 
-def process_song(youtube_url_or_query: str, language: Optional[str] = None, target_audio_path: Optional[str] = None) -> dict:
+def process_song_from_audio(wav_path: str, language: Optional[str] = None) -> dict:
+    """Analyze an already-downloaded or uploaded audio file (WAV) directly."""
     with tempfile.TemporaryDirectory() as tmp:
-        wav_path = retrieve_audio(youtube_url_or_query, tmp)
-        if target_audio_path:
-            shutil.copy(wav_path, target_audio_path)
-            persisted_wav = target_audio_path
-        else:
-            persisted_wav = wav_path
-
         vocals_path = separate_vocals(wav_path, tmp)
         pitch_events = detect_pitch(vocals_path)
         words = transcribe_lyrics(vocals_path, language=language)
@@ -439,4 +445,17 @@ def process_song(youtube_url_or_query: str, language: Optional[str] = None, targ
                 "string": pos.string_index,   # 0=low E ... 5=high E
                 "fret": pos.fret,
             })
-        return {"source_wav": persisted_wav, "notes": notes_out}
+        return {"source_wav": wav_path, "notes": notes_out}
+
+
+def process_song(youtube_url_or_query: str, language: Optional[str] = None, target_audio_path: Optional[str] = None) -> dict:
+    with tempfile.TemporaryDirectory() as tmp:
+        wav_path = retrieve_audio(youtube_url_or_query, tmp)
+        if target_audio_path:
+            shutil.copy(wav_path, target_audio_path)
+            persisted_wav = target_audio_path
+        else:
+            persisted_wav = wav_path
+
+        return process_song_from_audio(persisted_wav, language=language)
+
