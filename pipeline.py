@@ -240,7 +240,7 @@ def detect_pitch(vocals_wav_path: str, progress_cb: Optional[Callable[[str], Non
     except Exception:
         pass
 
-    CHUNK_SEC = 30.0
+    CHUNK_SEC = 20.0
     events: List[PitchEvent] = []
     total_chunks = max(1, math.ceil(duration / CHUNK_SEC))
 
@@ -253,7 +253,7 @@ def detect_pitch(vocals_wav_path: str, progress_cb: Optional[Callable[[str], Non
 
             pct = int((idx / total_chunks) * 100)
             if progress_cb:
-                progress_cb(f"Detecting melody notes with Basic Pitch AI ({pct}%)...")
+                progress_cb(f"Detecting melody notes ({pct}%)...")
 
             chunk_wav = os.path.join(chunk_tmp, f"chunk_{idx}.wav")
             # Extract 22050 Hz mono chunk directly
@@ -265,7 +265,7 @@ def detect_pitch(vocals_wav_path: str, progress_cb: Optional[Callable[[str], Non
 
             try:
                 _model_output, _midi_data, note_events = predict(
-                    chunk_wav, ICASSP_2022_MODEL_PATH
+                    chunk_wav, ICASSP_2022_MODEL_PATH, melodia_trick=False
                 )
                 for start_c, end_c, pitch_midi, amplitude, _bends in note_events:
                     freq = 440.0 * (2 ** ((pitch_midi - 69) / 12))

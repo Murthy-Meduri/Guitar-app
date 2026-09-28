@@ -23,6 +23,13 @@ RUN python -c "import whisper; whisper.load_model('tiny')"
 # Copy application code
 COPY . .
 
+# Restrict threading to eliminate OpenMP CPU thrashing on shared containers
+ENV OMP_NUM_THREADS=1 \
+    TF_NUM_INTRAOP_THREADS=1 \
+    TF_NUM_INTEROP_THREADS=1 \
+    OPENBLAS_NUM_THREADS=1 \
+    MKL_NUM_THREADS=1
+
 # Expose port and run uvicorn
 EXPOSE 8000
 CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]

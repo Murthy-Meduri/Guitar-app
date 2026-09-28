@@ -17,8 +17,14 @@ Run locally:
     uvicorn main:app --host 0.0.0.0 --port 8000
 """
 
-import json
 import os
+os.environ["OMP_NUM_THREADS"] = "1"
+os.environ["TF_NUM_INTRAOP_THREADS"] = "1"
+os.environ["TF_NUM_INTEROP_THREADS"] = "1"
+os.environ["OPENBLAS_NUM_THREADS"] = "1"
+os.environ["MKL_NUM_THREADS"] = "1"
+
+import json
 import shutil
 import subprocess
 import time
@@ -27,7 +33,7 @@ from collections import defaultdict, deque
 
 try:
     import torch
-    torch.set_num_threads(2)
+    torch.set_num_threads(1)
 except Exception:
     pass
 
@@ -293,4 +299,4 @@ def get_song(song_id: str):
 
 @app.get("/health")
 def health():
-    return {"status": "ok", "version": "chunked-pitch-v1"}
+    return {"status": "ok", "version": "lightning-pitch-v1"}
