@@ -33,13 +33,19 @@ from pipeline import process_song
 
 app = FastAPI(title="Sargam Strings API")
 
-ALLOWED_ORIGINS = [o.strip() for o in os.environ.get("ALLOWED_ORIGINS", "*").split(",")]
+origins_env = os.environ.get("ALLOWED_ORIGINS", "*")
+if origins_env.strip() == "*":
+    ALLOWED_ORIGINS = ["*"]
+else:
+    ALLOWED_ORIGINS = [o.strip() for o in origins_env.split(",") if o.strip()]
+
 API_KEY = os.environ.get("API_KEY")  # unset = no auth required (dev mode only)
-RATE_LIMIT_PER_HOUR = int(os.environ.get("RATE_LIMIT_PER_HOUR", "10"))
+RATE_LIMIT_PER_HOUR = int(os.environ.get("RATE_LIMIT_PER_HOUR", "60"))
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=ALLOWED_ORIGINS,
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
