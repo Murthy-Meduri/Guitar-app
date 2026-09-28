@@ -251,4 +251,4 @@ def get_song(song_id: str):
 
 @app.get("/health")
 def health():
-    return {"status": "ok", "version": "stream-bridge-v1"}
+    return {"status": "ok", "version": "stream-bridge-v2"}

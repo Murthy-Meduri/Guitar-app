@@ -173,15 +173,23 @@ def retrieve_audio(youtube_url_or_query: str, out_dir: str) -> str:
 
 def separate_vocals(wav_path: str, out_dir: str) -> str:
     """Run Demucs (htdemucs model) and return the path to the isolated
-    vocals/lead stem, which pitch detection runs on instead of the full mix."""
-    cmd = ["demucs", "-n", "htdemucs", "--two-stems", "vocals",
-           "-o", out_dir, wav_path]
-    subprocess.run(cmd, check=True, capture_output=True)
-    stem_name = os.path.splitext(os.path.basename(wav_path))[0]
-    vocals_path = os.path.join(out_dir, "htdemucs", stem_name, "vocals.wav")
-    if not os.path.exists(vocals_path):
-        raise FileNotFoundError("Demucs did not produce a vocals stem")
-    return vocals_path
+    vocals/lead stem, which pitch detection runs on instead of the full mix.
+    If Demucs fails (e.g. out of memory on cloud container), fall back to wav_path."""
+    try:
+        cmd = ["demucs", "-n", "htdemucs", "--two-stems", "vocals",
+               "-o", out_dir, wav_path]
+        res = subprocess.run(cmd, capture_output=True, text=True)
+        if res.returncode == 0:
+            stem_name = os.path.splitext(os.path.basename(wav_path))[0]
+            vocals_path = os.path.join(out_dir, "htdemucs", stem_name, "vocals.wav")
+            if os.path.exists(vocals_path):
+                return vocals_path
+        print(f"Demucs returned code {res.returncode}: {res.stderr or res.stdout}")
+    except Exception as e:
+        print(f"Demucs execution failed: {e}")
+
+    # Fall back to using the full audio mix directly
+    return wav_path
 
 
 # ---------------------------------------------------------------------------
@@ -244,17 +252,21 @@ class Word:
 
 
 def transcribe_lyrics(vocals_wav_path: str, language: Optional[str] = None) -> List[Word]:
-    import whisper
+    try:
+        import whisper
 
-    model_name = os.environ.get("WHISPER_MODEL", "base")
-    model = whisper.load_model(model_name)
-    result = model.transcribe(vocals_wav_path, language=language, word_timestamps=True)
+        model_name = os.environ.get("WHISPER_MODEL", "tiny")
+        model = whisper.load_model(model_name)
+        result = model.transcribe(vocals_wav_path, language=language, word_timestamps=True)
 
-    words: List[Word] = []
-    for segment in result["segments"]:
-        for w in segment.get("words", []):
-            words.append(Word(text=w["word"].strip(), start=w["start"], end=w["end"]))
-    return words
+        words: List[Word] = []
+        for segment in result.get("segments", []):
+            for w in segment.get("words", []):
+                words.append(Word(text=w["word"].strip(), start=w["start"], end=w["end"]))
+        return words
+    except Exception as e:
+        print(f"Whisper transcription skipped: {e}")
+        return []
 
 
 # ---------------------------------------------------------------------------
