@@ -172,13 +172,16 @@ def retrieve_audio(youtube_url_or_query: str, out_dir: str) -> str:
 # ---------------------------------------------------------------------------
 
 def separate_vocals(wav_path: str, out_dir: str) -> str:
-    """Run Demucs (htdemucs model) and return the path to the isolated
-    vocals/lead stem, which pitch detection runs on instead of the full mix.
-    If Demucs fails (e.g. out of memory on cloud container), fall back to wav_path."""
+    """Demucs vocal separation is a heavy multi-layer neural network that takes 5-10+ minutes on CPU.
+    Spotify Basic Pitch transcribes polyphonic audio mixes directly in 10-15 seconds.
+    To ensure fast 20-30s turnaround, Demucs is bypassed by default on CPU cloud hosts unless USE_DEMUCS=1."""
+    if os.environ.get("USE_DEMUCS", "0") != "1":
+        return wav_path
+
     try:
         cmd = ["demucs", "-n", "htdemucs", "--two-stems", "vocals",
                "-o", out_dir, wav_path]
-        res = subprocess.run(cmd, capture_output=True, text=True)
+        res = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
         if res.returncode == 0:
             stem_name = os.path.splitext(os.path.basename(wav_path))[0]
             vocals_path = os.path.join(out_dir, "htdemucs", stem_name, "vocals.wav")
@@ -186,7 +189,7 @@ def separate_vocals(wav_path: str, out_dir: str) -> str:
                 return vocals_path
         print(f"Demucs returned code {res.returncode}: {res.stderr or res.stdout}")
     except Exception as e:
-        print(f"Demucs execution failed: {e}")
+        print(f"Demucs execution failed or timed out: {e}")
 
     # Fall back to using the full audio mix directly
     return wav_path
@@ -257,7 +260,7 @@ def transcribe_lyrics(vocals_wav_path: str, language: Optional[str] = None) -> L
 
         model_name = os.environ.get("WHISPER_MODEL", "tiny")
         model = whisper.load_model(model_name)
-        result = model.transcribe(vocals_wav_path, language=language, word_timestamps=True)
+        result = model.transcribe(vocals_wav_path, language=language, word_timestamps=True, fp16=False)
 
         words: List[Word] = []
         for segment in result.get("segments", []):
