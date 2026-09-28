@@ -138,8 +138,8 @@ def _run_audio_job(job_id: str, raw_audio_path: str, language: str | None):
     os.makedirs(job_dir, exist_ok=True)
     persisted_audio = os.path.join(job_dir, "audio.wav")
     try:
-        # Convert raw uploaded audio (mp3, webm, m4a, etc.) to 44100Hz mono wav
-        cmd = ["ffmpeg", "-y", "-i", raw_audio_path, "-ar", "44100", "-ac", "1", persisted_audio]
+        # Convert raw uploaded audio (mp3, webm, m4a, etc.) to 22050Hz mono wav (native to Basic Pitch)
+        cmd = ["ffmpeg", "-y", "-i", raw_audio_path, "-ar", "22050", "-ac", "1", persisted_audio]
         conv_res = subprocess.run(cmd, capture_output=True, text=True)
         if conv_res.returncode != 0:
             raise RuntimeError(f"ffmpeg conversion failed: {conv_res.stderr or conv_res.stdout}")
@@ -293,4 +293,4 @@ def get_song(song_id: str):
 
 @app.get("/health")
 def health():
-    return {"status": "ok", "version": "ultra-pitch-v1"}
+    return {"status": "ok", "version": "chunked-pitch-v1"}
