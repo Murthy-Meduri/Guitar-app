@@ -41,6 +41,10 @@ def retrieve_audio(youtube_url_or_query: str, out_dir: str) -> str:
     """Download best-quality audio via yt-dlp using YouTube API, local/env cookies, or fallback args."""
     target = youtube_url_or_query
 
+    # Clean YouTube tracking parameters like ?si=... or &si=... from input URLs
+    if target.startswith("http"):
+        target = target.split("?si=")[0].split("&si=")[0]
+
     # If it's a search query, resolve to video URL via YouTube Data API v3
     if not target.startswith("http"):
         api_key = os.getenv("YOUTUBE_API_KEY", "AIzaSyC8FCz8lLbeYzq8UrME24FI8RZoqeZNzKc")
@@ -61,6 +65,7 @@ def retrieve_audio(youtube_url_or_query: str, out_dir: str) -> str:
         '--audio-format', 'wav',
         '--audio-quality', '0',
         '--no-check-certificates',
+        '--no-playlist',
     ]
 
     # Handle cookies via repo file, Render Secret file, or environment variable
@@ -80,20 +85,22 @@ def retrieve_audio(youtube_url_or_query: str, out_dir: str) -> str:
             f.write(cookies_env)
         cmd.extend(['--cookies', cookie_file_path])
     else:
-        # Fallback flags if no cookies are available
+        # Improved client rotation flags when cookies are absent
         cmd.extend([
-            '--extractor-args', 'youtube:player_client=android,ios',
-            '--user-agent', 'Mozilla/5.0 (Android 14; Mobile; rv:128.0) Gecko/128.0 Firefox/128.0'
+            '--extractor-args', 'youtube:player_client=ios,android,web_embedded',
+            '--user-agent', 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_5_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Mobile/15E148 Safari/604.1'
         ])
 
-    # Append output template and target URL EXACTLY ONCE
     cmd.extend(['-o', out_template, target])
 
-    try:
-        subprocess.run(cmd, check=True, capture_output=True)
-    finally:
-        if cookie_file_path and os.path.exists(cookie_file_path):
-            os.remove(cookie_file_path)
+    # Execute subprocess and capture stderr output for detailed error messages
+    result = subprocess.run(cmd, capture_output=True, text=True)
+
+    if cookie_file_path and os.path.exists(cookie_file_path):
+        os.remove(cookie_file_path)
+
+    if result.returncode != 0:
+        raise RuntimeError(f"yt-dlp failed with exit code {result.returncode}.\nError logs:\n{result.stderr}")
 
     wav_path = os.path.join(out_dir, "source.wav")
     if not os.path.exists(wav_path):
