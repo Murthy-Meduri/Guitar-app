@@ -27,7 +27,11 @@ def retrieve_audio(youtube_url_or_query: str, out_dir: str) -> str:
         '-x',
         '--audio-format', 'wav',
         '--audio-quality', '0',
+        '--extractor-args', 'youtube:player_client=android,ios',  # <-- Fixed client
+        '--user-agent', 'Mozilla/5.0 (Android 14; Mobile; rv:128.0) Gecko/128.0 Firefox/128.0',
         '--no-check-certificates',
+        '-o', out_template,
+        target
     ]
 
     # Handle cookies on Render via environment variable
