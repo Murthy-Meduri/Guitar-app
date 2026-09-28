@@ -33,9 +33,14 @@ import numpy as np
 
 def extract_video_id(url_or_query: str) -> Optional[str]:
     import re
-    match = re.search(r'(?:v=|\/|youtu\.be\/)([a-zA-Z0-9_-]{11})', url_or_query)
-    if match:
-        return match.group(1)
+    patterns = [
+        r'(?:v=|\/embed\/|\/v\/|youtu\.be\/|\/shorts\/)([a-zA-Z0-9_-]{11})',
+        r'^([a-zA-Z0-9_-]{11})$'
+    ]
+    for p in patterns:
+        m = re.search(p, url_or_query.strip())
+        if m:
+            return m.group(1)
     return None
 
 

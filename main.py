@@ -92,8 +92,31 @@ def _run_job(job_id: str, query: str, language: str | None):
         JOBS[job_id]["status"] = "done"
         JOBS[job_id]["result"] = {"notes": result["notes"], "audio_url": f"/audio/{job_id}"}
     except Exception as e:  # noqa: BLE001 — surface any pipeline failure to the client
+        import traceback
         JOBS[job_id]["status"] = "error"
-        JOBS[job_id]["error"] = str(e)
+        JOBS[job_id]["error"] = f"{type(e).__name__}: {e}\n{traceback.format_exc()}"
+
+
+@app.get("/debug-rapidapi/{video_id}")
+def debug_rapidapi(video_id: str):
+    import urllib.request
+    import json
+    key = (os.environ.get("RAPIDAPI_KEY") or "3252427cd0msh1e6df2ca0f9eeb6p13901cjsn25e93e92623b").strip()
+    url = f"https://youtube-mp36.p.rapidapi.com/dl?id={video_id}"
+    headers = {
+        "x-rapidapi-key": key,
+        "x-rapidapi-host": "youtube-mp36.p.rapidapi.com",
+        "User-Agent": "Mozilla/5.0"
+    }
+    req = urllib.request.Request(url, headers=headers)
+    try:
+        with urllib.request.urlopen(req, timeout=20) as res:
+            raw = res.read().decode()
+            data = json.loads(raw)
+        return {"status": "ok", "url": url, "key_prefix": key[:8], "response": data}
+    except Exception as e:
+        import traceback
+        return {"status": "error", "url": url, "key_prefix": key[:8], "error": str(e), "trace": traceback.format_exc()}
 
 
 @app.get("/")
