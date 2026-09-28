@@ -78,7 +78,7 @@ def retrieve_audio(youtube_url_or_query: str, out_dir: str) -> str:
     wav_path = os.path.join(out_dir, "source.wav")
 
     # 1. Check if RAPIDAPI_KEY is configured for cloud datacenter bypass
-    rapidapi_key = os.environ.get("RAPIDAPI_KEY")
+    rapidapi_key = os.environ.get("RAPIDAPI_KEY") or "3252427cd0msh1e6df2ca0f9eeb6p13901cjsn25e93e92623b"
     video_id = extract_video_id(target)
     if rapidapi_key and video_id:
         if download_via_rapidapi(video_id, wav_path, rapidapi_key):
