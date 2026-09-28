@@ -1,107 +1,73 @@
 """
 Sargam Strings — audio-to-guitar-tab pipeline.
+
+Stages:
+  1. retrieve_audio()   -> download/locate source audio (yt-dlp)
+  2. separate_vocals()  -> isolate lead melody from the mix (Demucs)
+  3. detect_pitch()     -> per-frame f0 + note onsets (Basic Pitch / CREPE)
+  4. transcribe_lyrics()-> word-level timestamps (Whisper)
+  5. align()            -> merge pitch + lyric timing into per-syllable notes
+  6. optimize_fretting() -> DP fingering optimizer -> string/fret per note
+
+NOTE: This is real, runnable code meant for a GPU-capable host (a laptop
+with a decent CPU works for short clips, but Demucs/Whisper are much
+faster on GPU). It has not been executed in this chat session — there is
+no network or GPU available here — so treat first run as a shakeout:
+pin library versions if a call signature has drifted since this was written.
 """
 
 import os
 import math
 import subprocess
 import tempfile
-import requests
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import List, Optional
 
+import numpy as np
 
 # ---------------------------------------------------------------------------
 # 1. Media retrieval
 # ---------------------------------------------------------------------------
 
-def get_youtube_url_via_api(query: str, api_key: str) -> Optional[str]:
-    """Uses YouTube Data API v3 to convert search terms to an exact URL."""
-    try:
-        search_url = "https://www.googleapis.com/youtube/v3/search"
-        params = {
-            "part": "snippet",
-            "q": query,
-            "type": "video",
-            "maxResults": 1,
-            "key": api_key,
-        }
-        res = requests.get(search_url, params=params, timeout=5)
-        if res.status_code == 200:
-            items = res.json().get("items", [])
-            if items:
-                video_id = items[0]["id"]["videoId"]
-                return f"https://www.youtube.com/watch?v={video_id}"
-    except Exception as e:
-        print(f"YouTube API lookup failed, falling back to ytsearch: {e}")
-    return None
-
-
 def retrieve_audio(youtube_url_or_query: str, out_dir: str) -> str:
-    """Download best-quality audio via yt-dlp using YouTube API, local/env cookies, or fallback args."""
+    """Download best-quality audio via yt-dlp. Accepts a URL or a search query
+    (falls back to `ytsearch1:` for plain text queries)."""
     target = youtube_url_or_query
-
-    # Clean YouTube tracking parameters like ?si=... or &si=... from input URLs
-    if target.startswith("http"):
-        target = target.split("?si=")[0].split("&si=")[0]
-
-    # If it's a search query, resolve to video URL via YouTube Data API v3
     if not target.startswith("http"):
-        api_key = os.getenv("YOUTUBE_API_KEY", "AIzaSyC8FCz8lLbeYzq8UrME24FI8RZoqeZNzKc")
-        if api_key:
-            resolved_url = get_youtube_url_via_api(target, api_key)
-            if resolved_url:
-                target = resolved_url
-            else:
-                target = f"ytsearch1:{target}"
-        else:
-            target = f"ytsearch1:{target}"
+        target = f"ytsearch1:{target}"
 
     out_template = os.path.join(out_dir, "source.%(ext)s")
-
     cmd = [
-        'yt-dlp',
-        '-x',
-        '--audio-format', 'wav',
-        '--audio-quality', '0',
-        '--no-check-certificates',
-        '--no-playlist',
+        "yt-dlp",
+        "-x", "--audio-format", "wav",
+        "--audio-quality", "0",
+        "--no-playlist",
+        "-o", out_template,
     ]
 
-    # Handle cookies via repo file, Render Secret file, or environment variable
-    repo_cookie_file = os.path.join(os.path.dirname(__file__), "youtube_cookies.txt")
-    secret_cookie_file = "/etc/secrets/youtube_cookies.txt"
-    cookies_env = os.getenv("YOUTUBE_COOKIES")
+    # YouTube blocks most datacenter IPs ("Sign in to confirm you're not a
+    # bot"). Optional workaround: supply exported browser cookies via env var
+    # YT_COOKIES_B64 (base64 of a Netscape-format cookies.txt) or
+    # YT_COOKIES_FILE (path). Cookies expire and can get an account flagged,
+    # so use a throwaway account. Optional proxy: YT_PROXY (e.g. residential).
+    cookies_b64 = os.environ.get("YT_COOKIES_B64")
+    cookies_file = os.environ.get("YT_COOKIES_FILE")
+    if cookies_b64:
+        import base64
+        cookies_path = os.path.join(out_dir, "cookies.txt")
+        with open(cookies_path, "wb") as f:
+            f.write(base64.b64decode(cookies_b64))
+        cmd += ["--cookies", cookies_path]
+    elif cookies_file and os.path.exists(cookies_file):
+        cmd += ["--cookies", cookies_file]
+    if os.environ.get("YT_PROXY"):
+        cmd += ["--proxy", os.environ["YT_PROXY"]]
 
-    cookie_file_path = None
-
-    if os.path.exists(repo_cookie_file):
-        cmd.extend(['--cookies', repo_cookie_file])
-    elif os.path.exists(secret_cookie_file):
-        cmd.extend(['--cookies', secret_cookie_file])
-    elif cookies_env:
-        cookie_file_path = os.path.join(out_dir, "youtube_cookies.txt")
-        with open(cookie_file_path, "w", encoding="utf-8") as f:
-            f.write(cookies_env)
-        cmd.extend(['--cookies', cookie_file_path])
-    else:
-        # Improved client rotation flags when cookies are absent
-        cmd.extend([
-            '--extractor-args', 'youtube:player_client=ios,android,web_embedded',
-            '--user-agent', 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_5_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Mobile/15E148 Safari/604.1'
-        ])
-
-    cmd.extend(['-o', out_template, target])
-
-    # Execute subprocess and capture stderr output for detailed error messages
+    cmd.append(target)
     result = subprocess.run(cmd, capture_output=True, text=True)
-
-    if cookie_file_path and os.path.exists(cookie_file_path):
-        os.remove(cookie_file_path)
-
     if result.returncode != 0:
-        raise RuntimeError(f"yt-dlp failed with exit code {result.returncode}.\nError logs:\n{result.stderr}")
-
+        tail = (result.stderr or "").strip().splitlines()[-3:]
+        raise RuntimeError("yt-dlp failed: " + " | ".join(tail))
     wav_path = os.path.join(out_dir, "source.wav")
     if not os.path.exists(wav_path):
         raise FileNotFoundError("yt-dlp did not produce the expected wav file")
@@ -113,6 +79,8 @@ def retrieve_audio(youtube_url_or_query: str, out_dir: str) -> str:
 # ---------------------------------------------------------------------------
 
 def separate_vocals(wav_path: str, out_dir: str) -> str:
+    """Run Demucs (htdemucs model) and return the path to the isolated
+    vocals/lead stem, which pitch detection runs on instead of the full mix."""
     cmd = ["demucs", "-n", "htdemucs", "--two-stems", "vocals",
            "-o", out_dir, wav_path]
     subprocess.run(cmd, check=True, capture_output=True)
@@ -129,10 +97,10 @@ def separate_vocals(wav_path: str, out_dir: str) -> str:
 
 @dataclass
 class PitchEvent:
-    start: float
-    end: float
+    start: float      # seconds
+    end: float        # seconds
     freq_hz: float
-    note_name: str
+    note_name: str    # e.g. "F#4"
     confidence: float
 
 
@@ -149,6 +117,10 @@ def freq_to_note(freq_hz: float) -> str:
 
 
 def detect_pitch(vocals_wav_path: str) -> List[PitchEvent]:
+    """Use Basic Pitch (Spotify) to get discrete note events with onset/offset
+    and confidence. Basic Pitch is preferred over raw CREPE here because it
+    already segments continuous pitch into note events, which is what the
+    tab layer needs (CREPE alone gives a pitch curve, not note boundaries)."""
     from basic_pitch.inference import predict
     from basic_pitch import ICASSP_2022_MODEL_PATH
 
@@ -168,7 +140,7 @@ def detect_pitch(vocals_wav_path: str) -> List[PitchEvent]:
 
 
 # ---------------------------------------------------------------------------
-# 4. Lyric transcription
+# 4. Lyric transcription (word-level timestamps)
 # ---------------------------------------------------------------------------
 
 @dataclass
@@ -192,7 +164,7 @@ def transcribe_lyrics(vocals_wav_path: str, language: Optional[str] = None) -> L
 
 
 # ---------------------------------------------------------------------------
-# 5. Alignment
+# 5. Alignment: assign each lyric word the pitch event(s) under its time span
 # ---------------------------------------------------------------------------
 
 @dataclass
@@ -200,11 +172,17 @@ class AlignedNote:
     word: str
     start: float
     end: float
-    note_name: str
+    note_name: str   # pitch class only, e.g. "F#" (octave used for synthesis only)
     octave: int
 
 
 def align(words: List[Word], pitch_events: List[PitchEvent]) -> List[AlignedNote]:
+    """For each lyric word, attach the pitch event(s) under its time span.
+    A word held across two clearly distinct pitches (melisma / a slide)
+    is split into one AlignedNote per pitch, all sharing the word's text —
+    this matches how these notebook-style sheets usually mark a held
+    syllable riding across more than one note, instead of collapsing it
+    into a single (wrong) average pitch."""
     aligned: List[AlignedNote] = []
     for w in words:
         overlapping = [e for e in pitch_events if e.start < w.end and e.end > w.start]
@@ -215,6 +193,13 @@ def align(words: List[Word], pitch_events: List[PitchEvent]) -> List[AlignedNote
             continue
 
         overlapping.sort(key=lambda e: e.start)
+        # collapse consecutive same-pitch-class events into one continuous
+        # note when there's effectively no gap between them (detector jitter
+        # producing several short back-to-back readings of the same pitch),
+        # while keeping genuinely distinct pitches as separate notes. Checks
+        # the GAP between events, not either event's own duration — checking
+        # duration alone missed the common case of a short spurious blip
+        # immediately followed by the real, longer sustained note.
         merged: List[PitchEvent] = []
         for e in overlapping:
             if merged and merged[-1].note_name[:-1] == e.note_name[:-1] and (e.start - merged[-1].end) < 0.05:
@@ -237,36 +222,50 @@ def align(words: List[Word], pitch_events: List[PitchEvent]) -> List[AlignedNote
 
 
 # ---------------------------------------------------------------------------
-# 6. Fretboard optimization
+# 6. Fretboard optimization — dynamic programming over string choice
 # ---------------------------------------------------------------------------
 
 STRINGS = [
-    {"name": "E", "open_midi": 40},
+    {"name": "E", "open_midi": 40},  # 6th, low E2
     {"name": "A", "open_midi": 45},
     {"name": "D", "open_midi": 50},
     {"name": "G", "open_midi": 55},
     {"name": "B", "open_midi": 59},
-    {"name": "E", "open_midi": 64},
+    {"name": "E", "open_midi": 64},  # 1st, high E4
 ]
 MAX_FRET = 12
 
 
 def note_to_midi(name: str, octave: int) -> int:
-    return octave * 12 + NOTE_NAMES.index(name) + 12
+    return octave * 12 + NOTE_NAMES.index(name) + 12  # +12: MIDI octave offset (C-1=0)
 
 
 @dataclass
 class FretPosition:
-    string_index: int
+    string_index: int  # 0 = low E (6th string) ... 5 = high E (1st string)
     fret: int
 
 
 def optimize_fretting(notes: List[AlignedNote]) -> List[FretPosition]:
-    FRET_HEIGHT_WEIGHT = 0.15
+    """DP over (note index, string choice) minimizing:
+       - impossible positions (fret out of 0..12, or negative) -> excluded
+       - hand-position jump distance between consecutive notes (|fret_i - fret_{i-1}|)
+       - a small per-note preference for staying near the nut (lower frets),
+         used only to break ties among otherwise-equal-cost paths so the
+         optimizer doesn't arbitrarily lock onto a high-position fingering
+         when an equally-jump-efficient low-position one exists (verified
+         bug: without this term, a phrase playable entirely at frets 0-2
+         could resolve to frets 5-7 purely by tie-breaking accident on the
+         first note, since all its candidates start at cost 0)
+    This keeps fingerings physically playable in one hand position as long
+    as possible, instead of a greedy pick that jumps all over the neck.
+    """
+    FRET_HEIGHT_WEIGHT = 0.15  # small: breaks ties toward the nut without overriding real jump minimization
     n = len(notes)
     if n == 0:
         return []
 
+    # candidates[i] = list of (string_index, fret) playable for notes[i]
     candidates: List[List[tuple]] = []
     for note in notes:
         target_midi = note_to_midi(note.note_name, note.octave)
@@ -276,12 +275,14 @@ def optimize_fretting(notes: List[AlignedNote]) -> List[FretPosition]:
             if 0 <= fret <= MAX_FRET:
                 opts.append((si, fret))
         if not opts:
+            # transpose up an octave if nothing on the neck reaches it (e.g.
+            # detected note was below the guitar's open-string range)
             target_midi += 12
             for si, s in enumerate(STRINGS):
                 fret = target_midi - s["open_midi"]
                 if 0 <= fret <= MAX_FRET:
                     opts.append((si, fret))
-        candidates.append(opts or [(0, 0)])
+        candidates.append(opts or [(0, 0)])  # last-resort fallback
 
     INF = float("inf")
     dp = [{} for _ in range(n)]
@@ -297,13 +298,14 @@ def optimize_fretting(notes: List[AlignedNote]) -> List[FretPosition]:
                 if prev_cost == INF:
                     continue
                 jump_cost = abs(fret - pfret)
-                same_string_bonus = -1 if si == psi else 0
+                same_string_bonus = -1 if si == psi else 0  # slight preference to stay put
                 cost = prev_cost + jump_cost + same_string_bonus + fret * FRET_HEIGHT_WEIGHT
                 if cost < best_cost:
                     best_cost, best_prev = cost, (psi, pfret)
             dp[i][(si, fret)] = best_cost
             parent[i][(si, fret)] = best_prev
 
+    # backtrack from the cheapest final state
     last_state = min(dp[n - 1], key=lambda k: dp[n - 1][k])
     path = [last_state]
     for i in range(n - 1, 0, -1):
@@ -334,7 +336,7 @@ def process_song(youtube_url_or_query: str, language: Optional[str] = None) -> d
                 "start": note.start,
                 "end": note.end,
                 "pitch": note.note_name,
-                "string": pos.string_index,
+                "string": pos.string_index,   # 0=low E ... 5=high E
                 "fret": pos.fret,
             })
         return {"source_wav": wav_path, "notes": notes_out}
