@@ -56,7 +56,10 @@ def download_via_rapidapi(video_id: str, out_wav_path: str, api_key: str) -> boo
         if not dl_link:
             return False
         tmp_mp3 = out_wav_path.replace(".wav", ".mp3")
-        urllib.request.urlretrieve(dl_link, tmp_mp3)
+        dl_req = urllib.request.Request(dl_link, headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"})
+        with urllib.request.urlopen(dl_req, timeout=30) as resp, open(tmp_mp3, "wb") as out_f:
+            shutil.copyfileobj(resp, out_f)
+
         subprocess.run(["ffmpeg", "-y", "-i", tmp_mp3, "-ar", "44100", "-ac", "1", out_wav_path], check=True, capture_output=True)
         if os.path.exists(tmp_mp3):
             os.remove(tmp_mp3)
