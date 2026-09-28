@@ -6,6 +6,7 @@ import os
 import math
 import subprocess
 import tempfile
+import requests
 from dataclasses import dataclass
 from typing import List, Optional
 
@@ -14,11 +15,43 @@ from typing import List, Optional
 # 1. Media retrieval
 # ---------------------------------------------------------------------------
 
+def get_youtube_url_via_api(query: str, api_key: str) -> Optional[str]:
+    """Uses YouTube Data API v3 to convert search terms to an exact URL."""
+    try:
+        search_url = "https://www.googleapis.com/youtube/v3/search"
+        params = {
+            "part": "snippet",
+            "q": query,
+            "type": "video",
+            "maxResults": 1,
+            "key": api_key,
+        }
+        res = requests.get(search_url, params=params, timeout=5)
+        if res.status_code == 200:
+            items = res.json().get("items", [])
+            if items:
+                video_id = items[0]["id"]["videoId"]
+                return f"https://www.youtube.com/watch?v={video_id}"
+    except Exception as e:
+        print(f"YouTube API lookup failed, falling back to ytsearch: {e}")
+    return None
+
+
 def retrieve_audio(youtube_url_or_query: str, out_dir: str) -> str:
-    """Download best-quality audio via yt-dlp using environment cookies or fallback args."""
+    """Download best-quality audio via yt-dlp using YouTube API, environment cookies, or fallback args."""
     target = youtube_url_or_query
+
+    # If it's a search query and API key exists, resolve to video URL via YouTube Data API v3
     if not target.startswith("http"):
-        target = f"ytsearch1:{target}"
+        api_key = os.getenv("AIzaSyC8FCz8lLbeYzq8UrME24FI8RZoqeZNzKc")
+        if api_key:
+            resolved_url = get_youtube_url_via_api(target, api_key)
+            if resolved_url:
+                target = resolved_url
+            else:
+                target = f"ytsearch1:{target}"
+        else:
+            target = f"ytsearch1:{target}"
 
     out_template = os.path.join(out_dir, "source.%(ext)s")
 
@@ -27,11 +60,7 @@ def retrieve_audio(youtube_url_or_query: str, out_dir: str) -> str:
         '-x',
         '--audio-format', 'wav',
         '--audio-quality', '0',
-        '--extractor-args', 'youtube:player_client=android,ios',  # <-- Fixed client
-        '--user-agent', 'Mozilla/5.0 (Android 14; Mobile; rv:128.0) Gecko/128.0 Firefox/128.0',
         '--no-check-certificates',
-        '-o', out_template,
-        target
     ]
 
     # Handle cookies on Render via environment variable
@@ -44,12 +73,13 @@ def retrieve_audio(youtube_url_or_query: str, out_dir: str) -> str:
             f.write(cookies_env)
         cmd.extend(['--cookies', cookie_file_path])
     else:
-        # Fallback to mobile client player args which pass data-center blocks
+        # Fallback flags if cookies env is missing
         cmd.extend([
             '--extractor-args', 'youtube:player_client=android,ios',
             '--user-agent', 'Mozilla/5.0 (Android 14; Mobile; rv:128.0) Gecko/128.0 Firefox/128.0'
         ])
 
+    # Append output template and target URL EXACTLY ONCE
     cmd.extend(['-o', out_template, target])
 
     try:
