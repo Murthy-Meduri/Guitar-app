@@ -25,6 +25,12 @@ import time
 import uuid
 from collections import defaultdict, deque
 
+try:
+    import torch
+    torch.set_num_threads(2)
+except Exception:
+    pass
+
 from fastapi import BackgroundTasks, FastAPI, File, Form, Header, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
@@ -100,6 +106,7 @@ def _run_job(job_id: str, query: str, language: str | None):
 
 def _run_audio_job(job_id: str, raw_audio_path: str, language: str | None):
     JOBS[job_id]["status"] = "running"
+    JOBS[job_id]["step"] = "Converting audio to WAV format..."
     job_dir = os.path.join(JOBS_DIR, job_id)
     os.makedirs(job_dir, exist_ok=True)
     persisted_audio = os.path.join(job_dir, "audio.wav")
@@ -110,8 +117,12 @@ def _run_audio_job(job_id: str, raw_audio_path: str, language: str | None):
         if conv_res.returncode != 0:
             raise RuntimeError(f"ffmpeg conversion failed: {conv_res.stderr or conv_res.stdout}")
 
-        result = process_song_from_audio(persisted_audio, language=language)
+        def progress_cb(msg: str):
+            JOBS[job_id]["step"] = msg
+
+        result = process_song_from_audio(persisted_audio, language=language, progress_cb=progress_cb)
         JOBS[job_id]["status"] = "done"
+        JOBS[job_id]["step"] = "Complete"
         JOBS[job_id]["result"] = {"notes": result["notes"], "audio_url": f"/audio/{job_id}"}
     except Exception as e:
         import traceback
@@ -251,4 +262,4 @@ def get_song(song_id: str):
 
 @app.get("/health")
 def health():
-    return {"status": "ok", "version": "fast-pitch-v1"}
+    return {"status": "ok", "version": "turbo-pitch-v1"}

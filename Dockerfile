@@ -17,6 +17,9 @@ RUN pip install --no-cache-dir --upgrade pip wheel && \
 COPY requirements.txt .
 RUN pip install --no-cache-dir --no-build-isolation -r requirements.txt
 
+# Pre-cache Whisper tiny model so it never downloads at runtime
+RUN python -c "import whisper; whisper.load_model('tiny')"
+
 # Copy application code
 COPY . .
 

@@ -23,7 +23,13 @@ import shutil
 import subprocess
 import tempfile
 from dataclasses import dataclass, field
-from typing import List, Optional
+from typing import Callable, List, Optional
+
+try:
+    import torch
+    torch.set_num_threads(2)
+except Exception:
+    pass
 
 import numpy as np
 
@@ -254,18 +260,37 @@ class Word:
     end: float
 
 
+_WHISPER_MODEL = None
+
+
 def transcribe_lyrics(vocals_wav_path: str, language: Optional[str] = None) -> List[Word]:
     try:
         import whisper
+        global _WHISPER_MODEL
 
         model_name = os.environ.get("WHISPER_MODEL", "tiny")
-        model = whisper.load_model(model_name)
-        result = model.transcribe(vocals_wav_path, language=language, word_timestamps=True, fp16=False)
+        if _WHISPER_MODEL is None:
+            _WHISPER_MODEL = whisper.load_model(model_name)
+
+        # word_timestamps=False is 10x-20x faster on CPU by avoiding DTW attention matrix alignment
+        result = _WHISPER_MODEL.transcribe(
+            vocals_wav_path, language=language, word_timestamps=False, fp16=False
+        )
 
         words: List[Word] = []
         for segment in result.get("segments", []):
-            for w in segment.get("words", []):
-                words.append(Word(text=w["word"].strip(), start=w["start"], end=w["end"]))
+            seg_text = segment.get("text", "").strip()
+            if not seg_text:
+                continue
+            seg_words = seg_text.split()
+            s_start = float(segment.get("start", 0.0))
+            s_end = float(segment.get("end", s_start + 1.0))
+            dur = max(0.2, s_end - s_start)
+            word_dur = dur / len(seg_words)
+            for idx, w in enumerate(seg_words):
+                w_start = s_start + idx * word_dur
+                w_end = w_start + word_dur
+                words.append(Word(text=w.strip(), start=w_start, end=w_end))
         return words
     except Exception as e:
         print(f"Whisper transcription skipped: {e}")
@@ -441,12 +466,19 @@ def optimize_fretting(notes: List[AlignedNote]) -> List[FretPosition]:
 # Orchestration
 # ---------------------------------------------------------------------------
 
-def process_song_from_audio(wav_path: str, language: Optional[str] = None) -> dict:
+def process_song_from_audio(wav_path: str, language: Optional[str] = None, progress_cb: Optional[Callable[[str], None]] = None) -> dict:
     """Analyze an already-downloaded or uploaded audio file (WAV) directly."""
     with tempfile.TemporaryDirectory() as tmp:
+        if progress_cb: progress_cb("Separating vocals (if enabled)...")
         vocals_path = separate_vocals(wav_path, tmp)
+
+        if progress_cb: progress_cb("Detecting melody notes with Basic Pitch AI...")
         pitch_events = detect_pitch(vocals_path)
+
+        if progress_cb: progress_cb("Transcribing lyrics with Whisper AI...")
         words = transcribe_lyrics(vocals_path, language=language)
+
+        if progress_cb: progress_cb("Optimizing guitar fretboard fingering...")
         aligned = align(words, pitch_events)
         frets = optimize_fretting(aligned)
 

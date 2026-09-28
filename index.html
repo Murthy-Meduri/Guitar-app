@@ -391,7 +391,7 @@ document.getElementById("fetchBtn").onclick=async ()=>{
       job_id = j.job_id;
     }
 
-    status.textContent = "Processing… Demucs vocal separation + Basic Pitch + Whisper AI in progress. (job " + job_id.slice(0,8) + ")";
+    status.textContent = "Processing audio… (job " + job_id.slice(0,8) + ")";
     let data = null;
     for(let tries = 0; tries < 150; tries++){
       await new Promise(r => setTimeout(r, 2000));
@@ -399,7 +399,8 @@ document.getElementById("fetchBtn").onclick=async ()=>{
       const sj = await sr.json();
       if(sj.status === "done"){ data = sj.result; break; }
       if(sj.status === "error") throw new Error(sj.error || "pipeline failed");
-      status.textContent = `Processing… (${sj.status}, ${tries * 2}s elapsed)`;
+      const currentStep = sj.step || sj.status;
+      status.textContent = `Processing… ${currentStep} (${tries * 2}s elapsed)`;
     }
 
     if(!data) throw new Error("timed out waiting for the job to finish");
