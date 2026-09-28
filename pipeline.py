@@ -44,29 +44,27 @@ def download_via_rapidapi(video_id: str, out_wav_path: str, api_key: str) -> boo
     import json
     url = f"https://youtube-mp36.p.rapidapi.com/dl?id={video_id}"
     headers = {
-        "x-rapidapi-key": api_key,
+        "x-rapidapi-key": api_key.strip(),
         "x-rapidapi-host": "youtube-mp36.p.rapidapi.com",
         "User-Agent": "Mozilla/5.0"
     }
     req = urllib.request.Request(url, headers=headers)
-    try:
-        with urllib.request.urlopen(req, timeout=20) as res:
-            data = json.loads(res.read().decode())
-        dl_link = data.get("link")
-        if not dl_link:
-            return False
-        tmp_mp3 = out_wav_path.replace(".wav", ".mp3")
-        dl_req = urllib.request.Request(dl_link, headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"})
-        with urllib.request.urlopen(dl_req, timeout=30) as resp, open(tmp_mp3, "wb") as out_f:
-            shutil.copyfileobj(resp, out_f)
+    with urllib.request.urlopen(req, timeout=25) as res:
+        data = json.loads(res.read().decode())
+    
+    dl_link = data.get("link")
+    if not dl_link:
+        raise RuntimeError(f"RapidAPI responded without download link: {data}")
+    
+    tmp_mp3 = out_wav_path.replace(".wav", ".mp3")
+    dl_req = urllib.request.Request(dl_link, headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"})
+    with urllib.request.urlopen(dl_req, timeout=35) as resp, open(tmp_mp3, "wb") as out_f:
+        shutil.copyfileobj(resp, out_f)
 
-        subprocess.run(["ffmpeg", "-y", "-i", tmp_mp3, "-ar", "44100", "-ac", "1", out_wav_path], check=True, capture_output=True)
-        if os.path.exists(tmp_mp3):
-            os.remove(tmp_mp3)
-        return os.path.exists(out_wav_path)
-    except Exception as e:
-        print(f"RapidAPI fallback failed: {e}")
-        return False
+    subprocess.run(["ffmpeg", "-y", "-i", tmp_mp3, "-ar", "44100", "-ac", "1", out_wav_path], check=True, capture_output=True)
+    if os.path.exists(tmp_mp3):
+        os.remove(tmp_mp3)
+    return os.path.exists(out_wav_path)
 
 
 def retrieve_audio(youtube_url_or_query: str, out_dir: str) -> str:
