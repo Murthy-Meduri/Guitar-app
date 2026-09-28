@@ -47,24 +47,61 @@ def extract_video_id(url_or_query: str) -> Optional[str]:
 def download_via_rapidapi(video_id: str, out_wav_path: str, api_key: str) -> bool:
     import urllib.request
     import json
+    import time
+
     url = f"https://youtube-mp36.p.rapidapi.com/dl?id={video_id}"
     headers = {
         "x-rapidapi-key": api_key.strip(),
         "x-rapidapi-host": "youtube-mp36.p.rapidapi.com",
         "User-Agent": "Mozilla/5.0"
     }
-    req = urllib.request.Request(url, headers=headers)
-    with urllib.request.urlopen(req, timeout=25) as res:
-        data = json.loads(res.read().decode())
-    
-    dl_link = data.get("link")
+
+    dl_link = None
+    last_data = {}
+    # Poll RapidAPI for up to 60 seconds (conversion takes a few seconds on new videos)
+    for attempt in range(20):
+        try:
+            req = urllib.request.Request(url, headers=headers)
+            with urllib.request.urlopen(req, timeout=25) as res:
+                last_data = json.loads(res.read().decode())
+        except Exception:
+            time.sleep(3)
+            continue
+
+        st = last_data.get("status")
+        pr = last_data.get("progress", 0)
+        link = last_data.get("link")
+
+        if st == "ok" and (pr == 100 or pr is None) and link:
+            dl_link = link
+            break
+        elif st == "fail":
+            raise RuntimeError(f"RapidAPI conversion failed: {last_data.get('msg')}")
+
+        time.sleep(3)
+
     if not dl_link:
-        raise RuntimeError(f"RapidAPI responded without download link: {data}")
-    
+        raise RuntimeError(f"Timed out waiting for RapidAPI audio conversion. Response: {last_data}")
+
     tmp_mp3 = out_wav_path.replace(".wav", ".mp3")
-    dl_req = urllib.request.Request(dl_link, headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"})
-    with urllib.request.urlopen(dl_req, timeout=35) as resp, open(tmp_mp3, "wb") as out_f:
-        shutil.copyfileobj(resp, out_f)
+    downloaded = False
+
+    # Download converted MP3 (retry up to 5 times if storage server has propagation delay)
+    for dl_attempt in range(6):
+        try:
+            dl_req = urllib.request.Request(dl_link, headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"})
+            with urllib.request.urlopen(dl_req, timeout=40) as resp, open(tmp_mp3, "wb") as out_f:
+                shutil.copyfileobj(resp, out_f)
+            downloaded = True
+            break
+        except urllib.error.HTTPError as he:
+            if he.code == 404 and dl_attempt < 5:
+                time.sleep(3)
+                continue
+            raise
+
+    if not downloaded or not os.path.exists(tmp_mp3):
+        raise RuntimeError("Failed to download converted MP3 from RapidAPI storage")
 
     subprocess.run(["ffmpeg", "-y", "-i", tmp_mp3, "-ar", "44100", "-ac", "1", out_wav_path], check=True, capture_output=True)
     if os.path.exists(tmp_mp3):

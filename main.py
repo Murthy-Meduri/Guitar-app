@@ -113,7 +113,18 @@ def debug_rapidapi(video_id: str):
         with urllib.request.urlopen(req, timeout=20) as res:
             raw = res.read().decode()
             data = json.loads(raw)
-        return {"status": "ok", "url": url, "key_prefix": key[:8], "response": data}
+        dl_link = data.get("link")
+        dl_status = None
+        dl_err = None
+        if dl_link:
+            try:
+                dl_req = urllib.request.Request(dl_link, headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"})
+                with urllib.request.urlopen(dl_req, timeout=10) as dl_res:
+                    dl_status = dl_res.status
+            except Exception as e:
+                import traceback
+                dl_err = f"{type(e).__name__}: {e}\n{traceback.format_exc()}"
+        return {"status": "ok", "url": url, "key_prefix": key[:8], "response": data, "dl_status": dl_status, "dl_err": dl_err}
     except Exception as e:
         import traceback
         return {"status": "error", "url": url, "key_prefix": key[:8], "error": str(e), "trace": traceback.format_exc()}
