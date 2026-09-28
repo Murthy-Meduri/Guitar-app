@@ -31,29 +31,71 @@ import numpy as np
 # 1. Media retrieval
 # ---------------------------------------------------------------------------
 
+def extract_video_id(url_or_query: str) -> Optional[str]:
+    import re
+    match = re.search(r'(?:v=|\/|youtu\.be\/)([a-zA-Z0-9_-]{11})', url_or_query)
+    if match:
+        return match.group(1)
+    return None
+
+
+def download_via_rapidapi(video_id: str, out_wav_path: str, api_key: str) -> bool:
+    import urllib.request
+    import json
+    url = f"https://youtube-mp36.p.rapidapi.com/dl?id={video_id}"
+    headers = {
+        "x-rapidapi-key": api_key,
+        "x-rapidapi-host": "youtube-mp36.p.rapidapi.com",
+        "User-Agent": "Mozilla/5.0"
+    }
+    req = urllib.request.Request(url, headers=headers)
+    try:
+        with urllib.request.urlopen(req, timeout=20) as res:
+            data = json.loads(res.read().decode())
+        dl_link = data.get("link")
+        if not dl_link:
+            return False
+        tmp_mp3 = out_wav_path.replace(".wav", ".mp3")
+        urllib.request.urlretrieve(dl_link, tmp_mp3)
+        subprocess.run(["ffmpeg", "-y", "-i", tmp_mp3, "-ar", "44100", "-ac", "1", out_wav_path], check=True, capture_output=True)
+        if os.path.exists(tmp_mp3):
+            os.remove(tmp_mp3)
+        return os.path.exists(out_wav_path)
+    except Exception as e:
+        print(f"RapidAPI fallback failed: {e}")
+        return False
+
+
 def retrieve_audio(youtube_url_or_query: str, out_dir: str) -> str:
-    """Download best-quality audio via yt-dlp. Accepts a URL or a search query
-    (falls back to `ytsearch1:` for plain text queries)."""
+    """Download best-quality audio via RapidAPI fallback or yt-dlp."""
     target = youtube_url_or_query.strip()
     if target.startswith("http"):
         target = target.split("?si=")[0].split("&si=")[0]
-    else:
+    
+    wav_path = os.path.join(out_dir, "source.wav")
+
+    # 1. Check if RAPIDAPI_KEY is configured for cloud datacenter bypass
+    rapidapi_key = os.environ.get("RAPIDAPI_KEY")
+    video_id = extract_video_id(target)
+    if rapidapi_key and video_id:
+        if download_via_rapidapi(video_id, wav_path, rapidapi_key):
+            return wav_path
+
+    # 2. Otherwise use yt-dlp (with optional YT_PROXY or cookies if provided)
+    if not target.startswith("http"):
         target = f"ytsearch1:{target}"
 
     out_template = os.path.join(out_dir, "source.%(ext)s")
     ytdlp_bin = shutil.which("yt-dlp")
     ytdlp_base = [ytdlp_bin] if ytdlp_bin else [sys.executable, "-m", "yt_dlp"]
-    # Use visionos and mediaconnect clients which bypass Google BotGuard and do NOT require sign-in
     cmd = ytdlp_base + [
         "-x", "--audio-format", "wav",
         "--audio-quality", "0",
         "--no-playlist",
         "--no-check-certificates",
-        "--extractor-args", "youtube:player_client=visionos,mediaconnect",
         "-o", out_template,
     ]
 
-    # Optional cookies if explicitly passed via environment variable
     cookies_b64 = os.environ.get("YT_COOKIES_B64")
     cookies_file = os.environ.get("YT_COOKIES_FILE")
 
@@ -73,10 +115,12 @@ def retrieve_audio(youtube_url_or_query: str, out_dir: str) -> str:
     result = subprocess.run(cmd, capture_output=True, text=True)
     if result.returncode != 0:
         err_msg = (result.stderr or result.stdout or "Unknown error").strip()
-        raise RuntimeError(f"yt-dlp failed with exit code {result.returncode}.\nError logs:\n{err_msg}")
-    wav_path = os.path.join(out_dir, "source.wav")
+        raise RuntimeError(
+            f"yt-dlp failed (code {result.returncode}): {err_msg}\n"
+            "To bypass cloud datacenter IP blocks, set RAPIDAPI_KEY or YT_PROXY in Render Environment Variables."
+        )
     if not os.path.exists(wav_path):
-        raise FileNotFoundError("yt-dlp did not produce the expected wav file")
+        raise FileNotFoundError("Audio downloader did not produce the expected wav file")
     return wav_path
 
 
