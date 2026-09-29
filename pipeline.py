@@ -566,12 +566,39 @@ def synthesize_guitar_audio(notes: List[dict], total_duration: float, out_wav_pa
 
     STRING_OPENS = [82.41, 110.00, 146.83, 196.00, 246.94, 329.63]
 
-    for n in notes:
+    CHORD_BASS_MAP = {
+        "D": 146.83, "Dm": 146.83, "C": 130.81, "Bb": 116.54, "A": 110.00, "Am": 110.00,
+        "G": 98.00, "Gm": 98.00, "E": 82.41, "Em": 82.41, "F": 87.31, "Bm": 123.47
+    }
+
+    last_bass_time = -99.0
+    for idx, n in enumerate(notes):
         st = float(n.get("start", 0.0))
         dur = max(0.35, min(2.5, float(n.get("end", st + 0.5)) - st))
         s_idx = max(0, min(5, int(n.get("string", 3))))
         fret = max(0, min(15, int(n.get("fret", 0))))
         freq = STRING_OPENS[s_idx] * (2.0 ** (fret / 12.0))
+
+        # Fingerstyle Thumb Bass accompaniment on chord changes / phrase downbeats (>1.6s interval)
+        if st - last_bass_time >= 1.6:
+            chord = n.get("chord") or (notes[0].get("chord") if notes else "D") or "D"
+            base_chord = chord.replace("[", "").replace("]", "").strip()
+            bass_freq = CHORD_BASS_MAP.get(base_chord, 110.0)
+            b_delay = max(2, int(round(sr / bass_freq)))
+            b_n_samples = int(sr * 2.2)
+            b_buf = np.zeros(b_n_samples, dtype=np.float32)
+            b_tri = np.zeros(b_delay, dtype=np.float32)
+            b_pick = max(1, int(round(b_delay * 0.32)))
+            for ti in range(b_delay):
+                b_tri[ti] = (ti / b_pick) if ti < b_pick else ((b_delay - ti) / max(1, b_delay - b_pick))
+            b_buf[:b_delay] = (b_tri * 0.75 + np.random.uniform(-0.25, 0.25, b_delay)) * 0.85
+            for i in range(b_delay, b_n_samples):
+                prev = b_buf[i - b_delay - 1] if (i - b_delay - 1 >= 0) else b_buf[b_delay - 1]
+                b_buf[i] = 0.5 * (b_buf[i - b_delay] + prev) * 0.9965
+            b_start = int(st * sr)
+            b_end = min(total_samples, b_start + b_n_samples)
+            track[b_start:b_end] += b_buf[:b_end - b_start] * 0.45
+            last_bass_time = st
 
         delay_len = max(2, int(round(sr / freq)))
         pick_pos = max(1, int(round(delay_len * 0.22)))
@@ -591,7 +618,7 @@ def synthesize_guitar_audio(notes: List[dict], total_duration: float, out_wav_pa
         if end_samp > total_samples:
             end_samp = total_samples
             buf = buf[:end_samp - start_samp]
-        track[start_samp:end_samp] += buf * 0.5
+        track[start_samp:end_samp] += buf * 0.55
 
     # Acoustic guitar body resonance (air cavity ~105Hz and soundboard ~210Hz)
     try:

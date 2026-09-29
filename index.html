@@ -228,6 +228,7 @@ footer{text-align:center;font-size:.72rem;opacity:.5;margin-top:30px}
       <option value="chords">🎼 Chords Only</option>
     </select>
     <select id="songSel"></select>
+    <button class="btn ghost small" id="accompToggleBtn" style="border-color:var(--brass);color:var(--brass-2);font-weight:600" title="Toggle acoustic fingerstyle thumb bass & chord rhythm accompaniment">🎸 Fingerstyle Rhythm: ON</button>
     <button class="btn ghost small" id="loopABtn">Loop A</button>
     <button class="btn ghost small" id="loopBBtn">Loop B</button>
     <button class="btn ghost small" id="loopToggleBtn">Loop: off</button>
@@ -462,27 +463,27 @@ function getReverbNode(c){
   }
 }
 
-function pluck(freq, dur=1.2, time=0){
+function pluck(freq, dur=1.2, time=0, isBass=false, vol=0.85){
   const c=ctx();
   if(!c || !freq || freq <= 0 || isNaN(freq)) return;
   if(c.state === "suspended") c.resume();
   const t0 = c.currentTime + Math.max(0.005, time);
   const sr = c.sampleRate;
   const period = Math.max(2, Math.round(sr / freq));
-  const nSamples = Math.floor(sr * Math.max(0.25, Math.min(3.0, dur)));
+  const nSamples = Math.floor(sr * Math.max(0.25, Math.min(3.5, dur)));
   const buf = c.createBuffer(1, nSamples, sr);
   const d = buf.getChannelData(0);
 
-  // Shaped plectrum/finger displacement at ~22% along the string
-  const pickPos = Math.max(1, Math.round(period * 0.22));
+  // Shaped plectrum/finger displacement at ~22% along the string (or 32% for thumb bass)
+  const pickPos = Math.max(1, Math.round(period * (isBass ? 0.32 : 0.22)));
   for(let i=0; i<period; i++){
     const tri = i < pickPos ? (i / pickPos) : ((period - i) / Math.max(1, period - pickPos));
-    const noise = (Math.random() * 2 - 1) * 0.40;
-    d[i] = (tri * 0.65 + noise) * 0.85;
+    const noise = (Math.random() * 2 - 1) * (isBass ? 0.25 : 0.40);
+    d[i] = (tri * (isBass ? 0.80 : 0.65) + noise) * 0.85;
   }
 
   // Realistic acoustic lead decay (warm bass sustain, fast treble ring)
-  const decay = Math.min(0.996, 0.991 + 0.005 * (200.0 / Math.max(120.0, freq)));
+  const decay = isBass ? 0.9962 : Math.min(0.996, 0.991 + 0.005 * (200.0 / Math.max(120.0, freq)));
   for(let i=period; i<nSamples; i++){
     const prev = (i - period - 1 >= 0) ? d[i - period - 1] : d[period - 1];
     d[i] = 0.5 * (d[i - period] + prev) * decay;
@@ -494,24 +495,29 @@ function pluck(freq, dur=1.2, time=0){
   // Dynamic lowpass filter: bright attack rapidly settling into fundamental
   const filt = c.createBiquadFilter();
   filt.type = "lowpass";
-  filt.frequency.setValueAtTime(Math.min(4600, freq * 7), t0);
-  filt.frequency.exponentialRampToValueAtTime(Math.max(450, freq * 1.4), t0 + dur);
+  if(isBass){
+    filt.frequency.setValueAtTime(1400, t0);
+    filt.frequency.exponentialRampToValueAtTime(340, t0 + dur);
+  } else {
+    filt.frequency.setValueAtTime(Math.min(4800, freq * 7), t0);
+    filt.frequency.exponentialRampToValueAtTime(Math.max(450, freq * 1.4), t0 + dur);
+  }
 
-  // Acoustic guitar soundboard & air cavity resonance (110Hz body & 215Hz top soundboard)
+  // Acoustic guitar soundboard & air cavity resonance
   const bodyRes = c.createBiquadFilter();
   bodyRes.type = "peaking";
-  bodyRes.frequency.value = 110;
+  bodyRes.frequency.value = isBass ? 95 : 110;
   bodyRes.Q.value = 3.0;
-  bodyRes.gain.value = 4.0;
+  bodyRes.gain.value = isBass ? 6.0 : 4.0;
 
   const topRes = c.createBiquadFilter();
   topRes.type = "peaking";
-  topRes.frequency.value = 215;
+  topRes.frequency.value = isBass ? 180 : 215;
   topRes.Q.value = 2.5;
   topRes.gain.value = 3.5;
 
   const gain = c.createGain();
-  gain.gain.setValueAtTime(0.85, t0);
+  gain.gain.setValueAtTime(vol, t0);
   gain.gain.linearRampToValueAtTime(0.0001, t0 + dur);
 
   src.connect(filt).connect(bodyRes).connect(topRes).connect(gain);
@@ -898,6 +904,63 @@ if(downloadTabBtn){
 }
 
 // ---------- Song data ----------
+const oPriyaPriyaSong = {
+  title: "🎶 O Priya Priya (Geethanjali) — Acoustic Fingerstyle Solo Melody",
+  key: "D Minor",
+  bpm: 86,
+  strum: "Fingerstyle Solo (Thumb Bass + Vocal Lead Pluck)",
+  chords: ["Dm", "C", "Bb", "A7"],
+  sections: [
+    "Phrase 1: O Priya Priya",
+    "Phrase 2: Naa Priya Priya",
+    "Phrase 3: Neeve Naa Oohalu",
+    "Phrase 4: Neeve Naa Kalalu",
+    "Phrase 5: O Priya Priya (Refrain)"
+  ],
+  lines: [
+    [
+      { word: "O...", pitch: "D4", string: 4, fret: 3, chord: "Dm", start: 0.40, end: 1.50, desc: "Fret 3 on B (singing sustain with Dm bass)" },
+      { word: "Pri-", pitch: "F4", string: 5, fret: 1, start: 1.50, end: 1.85, desc: "Fret 1 on high e" },
+      { word: "-ya", pitch: "E4", string: 5, fret: 0, start: 1.85, end: 2.20, desc: "Open high e" },
+      { word: "Pri-", pitch: "D4", string: 4, fret: 3, start: 2.20, end: 2.55, desc: "Fret 3 on B" },
+      { word: "-ya", pitch: "C#4", string: 4, fret: 2, start: 2.55, end: 3.65, desc: "Fret 2 on B (sustain with vibrato)" }
+    ],
+    [
+      { word: "Naa...", pitch: "D4", string: 4, fret: 3, chord: "C", start: 3.85, end: 4.95, desc: "Fret 3 on B (with C bass)" },
+      { word: "Pri-", pitch: "F4", string: 5, fret: 1, start: 4.95, end: 5.30, desc: "Fret 1 on high e" },
+      { word: "-ya", pitch: "E4", string: 5, fret: 0, start: 5.30, end: 5.65, desc: "Open high e" },
+      { word: "Pri-", pitch: "D4", string: 4, fret: 3, start: 5.65, end: 6.00, desc: "Fret 3 on B" },
+      { word: "-ya", pitch: "C#4", string: 4, fret: 2, start: 6.00, end: 7.10, desc: "Fret 2 on B" }
+    ],
+    [
+      { word: "Nee-", pitch: "F4", string: 5, fret: 1, chord: "Bb", start: 7.30, end: 7.60, desc: "Fret 1 on high e" },
+      { word: "-ve", pitch: "G4", string: 5, fret: 3, start: 7.60, end: 7.90, desc: "Fret 3 on high e" },
+      { word: "Naa", pitch: "A4", string: 5, fret: 5, start: 7.90, end: 8.45, desc: "Fret 5 on high e (high singing peak)" },
+      { word: "Oo-", pitch: "A4", string: 5, fret: 5, start: 8.45, end: 8.80, desc: "Fret 5 on high e" },
+      { word: "-ha-", pitch: "G4", string: 5, fret: 3, start: 8.80, end: 9.15, desc: "Fret 3 on high e" },
+      { word: "-lu", pitch: "F4", string: 5, fret: 1, start: 9.15, end: 9.60, desc: "Fret 1 on high e" },
+      { word: "~~~", pitch: "E4", string: 5, fret: 0, chord: "A7", start: 9.60, end: 10.70, desc: "Open high e with A7 harmony" }
+    ],
+    [
+      { word: "Nee-", pitch: "F4", string: 5, fret: 1, chord: "Bb", start: 10.90, end: 11.20, desc: "Fret 1 on high e" },
+      { word: "-ve", pitch: "G4", string: 5, fret: 3, start: 11.20, end: 11.50, desc: "Fret 3 on high e" },
+      { word: "Naa", pitch: "A4", string: 5, fret: 5, start: 11.50, end: 12.05, desc: "Fret 5 on high e" },
+      { word: "Ka-", pitch: "A4", string: 5, fret: 5, start: 12.05, end: 12.40, desc: "Fret 5 on high e" },
+      { word: "-la-", pitch: "G4", string: 5, fret: 3, start: 12.40, end: 12.75, desc: "Fret 3 on high e" },
+      { word: "-lu", pitch: "F4", string: 5, fret: 1, start: 12.75, end: 13.20, desc: "Fret 1 on high e" },
+      { word: "~~~", pitch: "E4", string: 5, fret: 0, chord: "A7", start: 13.20, end: 14.30, desc: "Open high e with A7 harmony" }
+    ],
+    [
+      { word: "O...", pitch: "D4", string: 4, fret: 3, chord: "Dm", start: 14.50, end: 15.40, desc: "Fret 3 on B" },
+      { word: "Pri-", pitch: "F4", string: 5, fret: 1, start: 15.40, end: 15.75, desc: "Fret 1 on high e" },
+      { word: "-ya", pitch: "E4", string: 5, fret: 0, start: 15.75, end: 16.10, desc: "Open high e" },
+      { word: "Pri-", pitch: "D4", string: 4, fret: 3, start: 16.10, end: 16.45, desc: "Fret 3 on B" },
+      { word: "-ya", pitch: "C#4", string: 4, fret: 2, start: 16.45, end: 17.00, desc: "Fret 2 on B" },
+      { word: "Dm", pitch: "D4", string: 4, fret: 3, chord: "Dm", start: 17.00, end: 19.00, desc: "Final Dm acoustic chord ringing" }
+    ]
+  ]
+};
+
 const asherIntroSong = {
   title: "🎸 Nenjukkul Peidhidum — Intro Tab (Asher Thomas Reference)",
   key: "D Major",
@@ -2444,7 +2507,7 @@ const demoSong = {
   sections: ["Verse","Verse","Chorus"]
 };
 
-let songs = [asherIntroSong, yeMantramoSong, demoSong];
+let songs = [oPriyaPriyaSong, asherIntroSong, yeMantramoSong, demoSong];
 let currentSong = songs[0];
 let notationMode = "tab";
 let autoScrollEnabled = true;
@@ -2464,6 +2527,7 @@ function ensureTimings(song){
     curr += secPerBeat * 0.4;
   });
 }
+ensureTimings(oPriyaPriyaSong);
 ensureTimings(asherIntroSong);
 ensureTimings(yeMantramoSong);
 ensureTimings(demoSong);
@@ -2769,6 +2833,25 @@ function renderLyrics(){
 
 function renderNotation(){ notationMode==="tab" ? renderTabView() : renderLyrics(); }
 
+// Acoustic fingerstyle accompaniment: warm thumb bass roots and gentle arpeggio groove
+const CHORD_BASS_FREQS = {
+  "D": 146.83, "Dm": 146.83, "D7": 146.83, "Dsus2": 146.83, "Dsus4": 146.83,
+  "C": 130.81, "C7": 130.81, "Cmaj7": 130.81, "Cm": 130.81,
+  "Bb": 116.54, "B": 123.47, "Bm": 123.47, "B7": 123.47,
+  "A": 110.00, "Am": 110.00, "A7": 110.00, "Asus2": 110.00, "Asus4": 110.00,
+  "G": 98.00, "Gm": 98.00, "G7": 98.00,
+  "E": 82.41, "Em": 82.41, "E7": 82.41,
+  "F": 87.31, "F#m": 92.50, "D#": 155.56
+};
+let fingerstyleAccompanimentEnabled = true;
+
+function playChordBass(chordName){
+  if(!chordName || !fingerstyleAccompanimentEnabled) return;
+  const base = chordName.replace(/\[|\]/g, "").trim();
+  const freq = CHORD_BASS_FREQS[base] || CHORD_BASS_FREQS[base.replace(/m|7|maj7|sus\d/g, "")] || 110.0;
+  pluck(freq, 2.2, 0, true, 0.70);
+}
+
 function playNote(tok, col, flatIdx, noteDur=1.2){
   const c = ctx();
   if(c && c.state === "suspended"){
@@ -2785,25 +2868,30 @@ function playNote(tok, col, flatIdx, noteDur=1.2){
   }
   highlightFret(tok.string, tok.fret);
 
+  // Trigger thumb acoustic bass on chord marks or phrase starts
+  if(fingerstyleAccompanimentEnabled && tok.chord){
+    playChordBass(tok.chord);
+  }
+
   // Realistic Acoustic Guitar Slide Articulation
   if(tok.slide && tok.slide.includes("/")){
     const p = tok.slide.split("/");
     const f1 = parseInt(p[0]), f2 = parseInt(p[1]);
     if(!isNaN(f1) && !isNaN(f2)){
-      pluck(freqFor(tok.pitch, tok.string, f1), 0.12);
-      setTimeout(() => pluck(freqFor(tok.pitch, tok.string, f2), Math.max(0.45, noteDur - 0.12)), 80);
+      pluck(freqFor(tok.pitch, tok.string, f1), 0.12, 0, false, 0.85);
+      setTimeout(() => pluck(freqFor(tok.pitch, tok.string, f2), Math.max(0.45, noteDur - 0.12), 0, false, 0.90), 80);
       return;
     }
   } else if(tok.slide && tok.slide.includes("\\")){
     const p = tok.slide.split("\\");
     const f1 = parseInt(p[0]), f2 = parseInt(p[1]);
     if(!isNaN(f1) && !isNaN(f2)){
-      pluck(freqFor(tok.pitch, tok.string, f1), 0.12);
-      setTimeout(() => pluck(freqFor(tok.pitch, tok.string, f2), Math.max(0.45, noteDur - 0.12)), 80);
+      pluck(freqFor(tok.pitch, tok.string, f1), 0.12, 0, false, 0.85);
+      setTimeout(() => pluck(freqFor(tok.pitch, tok.string, f2), Math.max(0.45, noteDur - 0.12), 0, false, 0.90), 80);
       return;
     }
   }
-  pluck(freqFor(tok.pitch, tok.string, tok.fret), noteDur);
+  pluck(freqFor(tok.pitch, tok.string, tok.fret), noteDur, 0, false, 0.90);
 }
 
 // fretboard — real vector neck: nut, fret wires, inlay dots, tapered strings
@@ -2878,6 +2966,22 @@ async function playSequence(startIdx,endIdx){
         const delta = (nextTok.start - tok.start) / speed;
         sleepMs = Math.max(75, Math.min(3500, delta * 1000));
         noteDur = Math.max(0.25, (tok.end && tok.end > tok.start ? (tok.end - tok.start) : delta) / speed);
+
+        // Natural fingerstyle acoustic rhythm fill during vocal pauses (>0.55s)
+        if(fingerstyleAccompanimentEnabled && delta > 0.55){
+          setTimeout(() => {
+            if(playing && !stopRequested){
+              pluck(196.00, 0.75, 0, false, 0.28); // gentle open G chime
+            }
+          }, delta * 1000 * 0.45);
+          if(delta > 0.85){
+            setTimeout(() => {
+              if(playing && !stopRequested){
+                pluck(246.94, 0.75, 0, false, 0.24); // gentle open B chime
+              }
+            }, delta * 1000 * 0.75);
+          }
+        }
       } else if(tok.end != null && tok.start != null && tok.end > tok.start){
         const dur = (tok.end - tok.start) / speed;
         sleepMs = Math.max(75, dur * 1000);
@@ -2996,6 +3100,15 @@ document.getElementById("loopBBtn").onclick=(e)=>{
   else{ synthLoopB=lastPlayedFlatIdx; e.target.textContent="Loop B ("+lastPlayedFlatIdx+")"; }
 };
 document.getElementById("loopToggleBtn").onclick=(e)=>{ loopActive=!loopActive; e.target.textContent="Loop: "+(loopActive?"on":"off"); };
+
+const accompBtn = document.getElementById("accompToggleBtn");
+if(accompBtn){
+  accompBtn.onclick = () => {
+    fingerstyleAccompanimentEnabled = !fingerstyleAccompanimentEnabled;
+    accompBtn.textContent = "🎸 Fingerstyle Rhythm: " + (fingerstyleAccompanimentEnabled ? "ON" : "OFF");
+    accompBtn.style.color = fingerstyleAccompanimentEnabled ? "var(--brass-2)" : "var(--muted)";
+  };
+}
 
 // ---------- Metronome ----------
 let metroTimer=null, metroOn=false;
