@@ -581,7 +581,8 @@ def synthesize_guitar_audio(notes: List[dict], total_duration: float, out_wav_pa
         buf[:delay_len] = noise
         decay = 0.994  # realistic acoustic sustain
         for i in range(delay_len, n_samples):
-            buf[i] = 0.5 * (buf[i - delay_len] + buf[i - delay_len - 1]) * decay
+            prev = buf[i - delay_len - 1] if (i - delay_len - 1 >= 0) else buf[delay_len - 1]
+            buf[i] = 0.5 * (buf[i - delay_len] + prev) * decay
 
         start_samp = int(st * sr)
         end_samp = start_samp + n_samples
