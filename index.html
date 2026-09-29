@@ -153,8 +153,8 @@ footer{text-align:center;font-size:.72rem;opacity:.5;margin-top:30px}
 <body>
 <div class="wrap">
 <header>
-  <p class="brand">Sargam Strings</p>
-  <p class="tag">Letter-note & melody-tab guitar trainer</p>
+  <p class="brand">Songscription Guitar</p>
+  <p class="tag">AI Song-to-Solo-Guitar Transcriber & Animated Tab Player</p>
 </header>
 
 <div class="creator" style="margin-bottom:14px">
@@ -179,38 +179,32 @@ footer{text-align:center;font-size:.72rem;opacity:.5;margin-top:30px}
       </div>
     </div>
   </div>
-  <div style="display:flex;gap:8px;margin-bottom:8px">
-    <button class="btn small" id="modeYoutubeBtn" style="padding:3px 12px;font-size:0.75rem">🔗 YouTube Song Link</button>
-    <button class="btn ghost small" id="modeCustomNotesBtn" style="padding:3px 12px;font-size:0.75rem">🎸 Type/Paste Melody Notes (e.g. C C C D B B A...)</button>
-  </div>
   <div class="row" id="youtubeInputRow">
-    <input type="text" id="ytQuery" placeholder="Paste YouTube link (instant &lt;2s) or search song…" style="flex:1;min-width:200px">
-    <button class="btn" id="fetchBtn">Fetch & Play Guitar</button>
+    <input type="text" id="ytQuery" placeholder="Paste YouTube link (instant &lt;2s) or search song (e.g. Ye Mantramo)…" style="flex:1;min-width:200px">
+    <button class="btn" id="fetchBtn">🎸 Transcribe to Solo Guitar Tab</button>
   </div>
-  <div class="row" id="customNotesInputRow" style="display:none">
-    <input type="text" id="customMelodyInput" placeholder="e.g. C C C D  B B A  B A  G A  E  C B C" value="C C C D  B B A  B A  G A  E  C B C" style="flex:1;min-width:200px">
-    <button class="btn" id="playCustomMelodyBtn">🎸 Play Melody on Guitar</button>
-  </div>
-  <div class="small-label" id="apiStatus" style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:6px">Ready. Enter YouTube link or paste melody notes above — guitar plucks each note in tempo.</div>
+  <div class="small-label" id="apiStatus" style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:6px">Ready. Transcribes any song into solo acoustic guitar melody & 6-line animated tab.</div>
 
   <div id="audioControlsBar" style="display:flex;align-items:center;justify-content:space-between;margin-top:10px;flex-wrap:wrap;gap:8px;background:var(--card);padding:6px 10px;border-radius:6px;border:1px solid var(--paper-line)">
     <div style="display:flex;align-items:center;gap:6px">
-      <span style="font-weight:600;font-size:0.75rem;color:var(--brass-2)">Audio Source:</span>
-      <select id="audioTrackType" style="padding:2px 8px;font-size:0.75rem">
-        <option value="guitar">🎸 Guitar Audio (Tabs Played on Guitar)</option>
-        <option value="original">🎤 Original Song Audio</option>
-      </select>
+      <span style="font-weight:700;font-size:0.78rem;color:var(--string-2)">🎸 Audio Mode:</span>
+      <span style="font-size:0.78rem;color:var(--ink);font-weight:600">100% Solo Acoustic Guitar (No Vocals)</span>
     </div>
-    <button class="btn ghost small" id="toggleLyricEditorBtn" style="padding:2px 10px;font-size:0.75rem">✏️ Paste / Edit Song Lyrics Above Notes</button>
+    <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+      <button class="btn ghost small" id="downloadAudioBtn" title="Download solo guitar WAV audio">💾 Audio (.wav)</button>
+      <button class="btn ghost small" id="downloadMidiBtn" title="Export MIDI file for Guitar Pro / DAWs">🎼 MIDI (.mid)</button>
+      <button class="btn ghost small" id="downloadTabBtn" title="Export standard 6-line ASCII tab">📄 Tab (.txt)</button>
+      <button class="btn ghost small" id="toggleLyricEditorBtn" style="padding:2px 10px;font-size:0.75rem">✏️ Words</button>
+    </div>
   </div>
   <audio id="realAudio" style="width:100%;margin-top:8px;display:none" controls></audio>
 
   <div id="lyricEditorBox" style="display:none;margin-top:10px;padding:10px;background:var(--paper);border:1px dashed var(--brass);border-radius:6px">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
-      <span style="font-weight:600;font-size:0.8rem;color:var(--brass-2)">📝 Paste Song Lyrics / Words</span>
+      <span style="font-weight:600;font-size:0.8rem;color:var(--brass-2)">📝 Paste Song Words / Syllables</span>
       <button class="btn small" id="applyLyricsBtn" style="padding:3px 12px">Apply Words to Notes</button>
     </div>
-    <textarea id="lyricInput" placeholder="Paste your song lyrics here (e.g. Le padha padhaa zindagi ko bana muskara hai ke...)... Each word will automatically be placed directly above its guitar note & chord!" rows="3" style="width:100%;font-size:0.85rem;background:var(--card);border:1px solid var(--paper-line);border-radius:4px;padding:6px;color:var(--ink)"></textarea>
+    <textarea id="lyricInput" placeholder="Paste song lyrics/words here... Each word will be placed directly above its guitar tab note!" rows="3" style="width:100%;font-size:0.85rem;background:var(--card);border:1px solid var(--paper-line);border-radius:4px;padding:6px;color:var(--ink)"></textarea>
   </div>
 </div>
 
@@ -452,7 +446,7 @@ function pluck(freq, dur=1.2, time=0){
   const buf = c.createBuffer(1, nSamples, sr);
   const d = buf.getChannelData(0);
   for(let i=0; i<period; i++) d[i] = (Math.random()*2 - 1) * 0.75;
-  const decay = 0.993;
+  const decay = 0.994; // warm acoustic decay
   for(let i=period; i<nSamples; i++){
     d[i] = 0.5 * (d[i - period] + d[i - period - 1]) * decay;
   }
@@ -460,12 +454,27 @@ function pluck(freq, dur=1.2, time=0){
   src.buffer = buf;
   const filt = c.createBiquadFilter();
   filt.type = "lowpass";
-  filt.frequency.setValueAtTime(3800, t0);
-  filt.frequency.exponentialRampToValueAtTime(700, t0 + dur);
+  filt.frequency.setValueAtTime(3600, t0);
+  filt.frequency.exponentialRampToValueAtTime(650, t0 + dur);
+
+  // Acoustic guitar soundboard & air cavity resonance (110Hz & 215Hz)
+  const bodyRes = c.createBiquadFilter();
+  bodyRes.type = "peaking";
+  bodyRes.frequency.value = 110;
+  bodyRes.Q.value = 3.0;
+  bodyRes.gain.value = 4.0;
+
+  const topRes = c.createBiquadFilter();
+  topRes.type = "peaking";
+  topRes.frequency.value = 215;
+  topRes.Q.value = 2.5;
+  topRes.gain.value = 3.5;
+
   const gain = c.createGain();
   gain.gain.setValueAtTime(0.85, t0);
   gain.gain.exponentialRampToValueAtTime(0.001, t0 + dur);
-  src.connect(filt).connect(gain).connect(c.destination);
+
+  src.connect(filt).connect(bodyRes).connect(topRes).connect(gain).connect(c.destination);
   src.start(t0);
 }
 
@@ -725,113 +734,125 @@ if(applyLyricsBtn){
   };
 }
 
-if(audioTrackType){
-  audioTrackType.onchange = () => {
-    if(!currentSong) return;
-    const wasPlaying = !realAudio.paused;
-    const currTime = realAudio.currentTime;
-    if(audioTrackType.value === "guitar"){
-      realAudio.src = API_BASE_URL + (currentSong.guitar_audio_url || `/guitar-audio/${currentSong.id}`);
+// ---------- Songscription Export & Download Helpers ----------
+function downloadBlob(blob, filename){
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+function exportSongTabTxt(song){
+  const order = [5, 4, 3, 2, 1, 0];
+  const labels = ["e", "B", "G", "D", "A", "E"];
+  let txt = `# Solo Guitar Tab: ${song.title || "Song"}\n# Key: ${song.key || "—"} | BPM: ${song.bpm || 100} | Strum: ${song.strum || "—"}\n# Transcribed with Songscription Guitar (Solo Guitar Melody)\n\n`;
+  song.lines.forEach((line, li) => {
+    const sec = song.sections && song.sections[li];
+    if(sec) txt += `[${sec}]\n`;
+    const rows = labels.map(() => []);
+    line.forEach(tok => {
+      const f = String(tok.fret != null ? tok.fret : tok.pitch || 0);
+      order.forEach((si, ri) => {
+        rows[ri].push(si === tok.string ? f : "-".repeat(f.length));
+      });
+    });
+    rows.forEach((cells, ri) => {
+      txt += labels[ri] + "|-" + cells.join("-") + "-|\n";
+    });
+    txt += "\n";
+  });
+  return txt;
+}
+
+function createMidiBlob(song){
+  const ticksPerBeat = 480;
+  const bpm = song.bpm || 100;
+  const secPerTick = 60.0 / (bpm * ticksPerBeat);
+  const flat = flattenSong(song);
+  const STR_OPEN = [40, 45, 50, 55, 59, 64]; // E2, A2, D3, G3, B3, E4
+
+  const events = [];
+  flat.forEach(n => {
+    const st = n.start || 0;
+    const en = n.end || (st + 0.4);
+    const s = n.string != null ? n.string : 3;
+    const f = n.fret != null ? n.fret : 0;
+    const midiPitch = STR_OPEN[s] + f;
+    events.append = undefined; // safety
+    events.push({ t: st, type: 0x90, pitch: midiPitch, vel: 92 });
+    events.push({ t: en, type: 0x80, pitch: midiPitch, vel: 0 });
+  });
+  events.sort((a, b) => a.t === b.t ? (a.type === 0x80 ? -1 : 1) : a.t - b.t);
+
+  const track = [0x00, 0xC0, 25]; // Program Change: Acoustic Guitar (Steel)
+  let lastTime = 0;
+  events.forEach(e => {
+    const deltaSec = Math.max(0, e.t - lastTime);
+    let deltaTicks = Math.round(deltaSec / secPerTick);
+    lastTime = e.t;
+
+    const buf = [];
+    buf.push(deltaTicks & 0x7F);
+    while(deltaTicks > 0x7F){
+      deltaTicks >>= 7;
+      buf.unshift((deltaTicks & 0x7F) | 0x80);
+    }
+    track.push(...buf);
+    track.push(e.type, e.pitch, e.vel);
+  });
+  track.push(0x00, 0xFF, 0x2F, 0x00);
+
+  const header = [
+    0x4D, 0x54, 0x68, 0x64,
+    0x00, 0x00, 0x00, 0x06,
+    0x00, 0x00,
+    0x00, 0x01,
+    (ticksPerBeat >> 8) & 0xFF, ticksPerBeat & 0xFF
+  ];
+  const trkHeader = [
+    0x4D, 0x54, 0x72, 0x6B,
+    (track.length >> 24) & 0xFF, (track.length >> 16) & 0xFF, (track.length >> 8) & 0xFF, track.length & 0xFF
+  ];
+
+  const full = new Uint8Array([...header, ...trkHeader, ...track]);
+  return new Blob([full], { type: "audio/midi" });
+}
+
+const downloadAudioBtn = document.getElementById("downloadAudioBtn");
+const downloadMidiBtn = document.getElementById("downloadMidiBtn");
+const downloadTabBtn = document.getElementById("downloadTabBtn");
+
+if(downloadAudioBtn){
+  downloadAudioBtn.onclick = () => {
+    if(currentSong && currentSong.guitar_audio_url){
+      const a = document.createElement("a");
+      a.href = API_BASE_URL + currentSong.guitar_audio_url;
+      a.download = `solo_guitar_${(currentSong.title || 'song').replace(/[^a-z0-9]/gi, '_')}.wav`;
+      a.click();
     } else {
-      realAudio.src = API_BASE_URL + (currentSong.orig_audio_url || `/audio/${currentSong.id}`);
+      document.getElementById("apiStatus").textContent = "Solo guitar audio is active and playing directly through the acoustic synth!";
     }
-    realAudio.currentTime = currTime;
-    if(wasPlaying) realAudio.play();
   };
 }
 
-const modeYoutubeBtn = document.getElementById("modeYoutubeBtn");
-const modeCustomNotesBtn = document.getElementById("modeCustomNotesBtn");
-const youtubeInputRow = document.getElementById("youtubeInputRow");
-const customNotesInputRow = document.getElementById("customNotesInputRow");
-const playCustomMelodyBtn = document.getElementById("playCustomMelodyBtn");
-
-if(modeYoutubeBtn && modeCustomNotesBtn){
-  modeYoutubeBtn.onclick = () => {
-    modeYoutubeBtn.className = "btn small";
-    modeCustomNotesBtn.className = "btn ghost small";
-    youtubeInputRow.style.display = "flex";
-    customNotesInputRow.style.display = "none";
-  };
-  modeCustomNotesBtn.onclick = () => {
-    modeCustomNotesBtn.className = "btn small";
-    modeYoutubeBtn.className = "btn ghost small";
-    customNotesInputRow.style.display = "flex";
-    youtubeInputRow.style.display = "none";
-    document.getElementById("customMelodyInput").focus();
+if(downloadMidiBtn){
+  downloadMidiBtn.onclick = () => {
+    if(!currentSong) return;
+    const blob = createMidiBlob(currentSong);
+    downloadBlob(blob, `solo_guitar_${(currentSong.title || 'song').replace(/[^a-z0-9]/gi, '_')}.mid`);
   };
 }
 
-if(playCustomMelodyBtn){
-  playCustomMelodyBtn.onclick = () => {
-    const rawInput = document.getElementById("customMelodyInput").value.trim();
-    if(!rawInput) return;
-
-    const rawTokens = rawInput.toUpperCase().replace(/,/g, " ").split(/\s+/).filter(t => t.length > 0);
-    const parsedNotes = [];
-
-    rawTokens.forEach(tok => {
-      const map = {"DB":"C#","EB":"D#","GB":"F#","AB":"G#","BB":"A#"};
-      let normalized = tok;
-      for(const k in map) normalized = normalized.replaceAll(k, map[k]);
-
-      let i = 0;
-      while(i < normalized.length){
-        let twoChar = normalized.substr(i, 2);
-        let oneChar = normalized.substr(i, 1);
-        if(NOTE_ORDER.includes(twoChar)){
-          parsedNotes.push(twoChar);
-          i += 2;
-        } else if(NOTE_ORDER.includes(oneChar)){
-          parsedNotes.push(oneChar);
-          i += 1;
-        } else {
-          i += 1;
-        }
-      }
-    });
-
-    if(!parsedNotes.length){
-      document.getElementById("apiStatus").textContent = "Could not parse note letters. Please use notes: C, D, E, F, G, A, B";
-      return;
-    }
-
-    const lines = [];
-    let cur = [];
-    parsedNotes.forEach(p => {
-      cur.push({ word: p, pitch: p, string: 0, fret: 0, start: 0, end: 0 });
-      if(cur.length >= 4){ lines.push(cur); cur = []; }
-    });
-    if(cur.length) lines.push(cur);
-
-    const song = {
-      title: "Melody: " + parsedNotes.slice(0, 6).join(" ") + "...",
-      key: "C Major",
-      bpm: 104,
-      strum: "D - D U - U D -",
-      chords: ["C", "G", "Am", "F"],
-      lines: lines
-    };
-
-    buildFret(song);
-    ensureTimings(song);
-    songs.push(song);
-    refreshAll();
-    songSel.value = songs.length - 1;
-    currentSong = song;
-    notationMode = "tab";
-    document.getElementById("notationMode").value = "tab";
-    realAudio.style.display = "none";
-    realAudio.src = "";
-    renderMeta();
-    renderChords();
-    renderNotation();
-
-    stopRequested = false;
-    playing = true;
-    document.getElementById("apiStatus").textContent = `🎸 Playing ${parsedNotes.length} melody notes on guitar!`;
-    const flat = flattenSong(song);
-    playSequence(0, flat.length - 1);
+if(downloadTabBtn){
+  downloadTabBtn.onclick = () => {
+    if(!currentSong) return;
+    const txt = exportSongTabTxt(currentSong);
+    const blob = new Blob([txt], { type: "text/plain;charset=utf-8" });
+    downloadBlob(blob, `tab_${(currentSong.title || 'song').replace(/[^a-z0-9]/gi, '_')}.txt`);
   };
 }
 
@@ -886,7 +907,7 @@ const asherIntroSong = {
 };
 
 const yeMantramoSong = {
-  "title": "\ud83c\udfb6 Ye Mantramo (Andala Rakshasi) \u2014 Original Notes",
+  "title": "\ud83c\udfb6 Ye Mantramo (Andala Rakshasi) \u2014 Solo Guitar Melody",
   "key": "C Minor",
   "bpm": 89,
   "strum": "D - D U - U D -",
@@ -898,14 +919,13 @@ const yeMantramoSong = {
   ],
   "id": "10eff864-8fe8-4e27-9df7-80a69b8f63b5",
   "guitar_audio_url": "/guitar-audio/10eff864-8fe8-4e27-9df7-80a69b8f63b5",
-  "orig_audio_url": "/audio/10eff864-8fe8-4e27-9df7-80a69b8f63b5",
   "lines": [
     [
       {
         "word": "B",
         "pitch": "B",
-        "string": 1,
-        "fret": 2,
+        "string": 3,
+        "fret": 4,
         "start": 6.304,
         "end": 6.56
       },
@@ -920,16 +940,16 @@ const yeMantramoSong = {
       {
         "word": "C",
         "pitch": "C",
-        "string": 1,
-        "fret": 3,
+        "string": 4,
+        "fret": 1,
         "start": 6.88,
         "end": 7.168
       },
       {
         "word": "A#",
         "pitch": "A#",
-        "string": 1,
-        "fret": 1,
+        "string": 3,
+        "fret": 3,
         "start": 7.584,
         "end": 7.712
       },
@@ -962,16 +982,16 @@ const yeMantramoSong = {
       {
         "word": "G",
         "pitch": "G",
-        "string": 0,
-        "fret": 3,
+        "string": 3,
+        "fret": 0,
         "start": 8.768,
         "end": 8.928
       },
       {
         "word": "G",
         "pitch": "G",
-        "string": 5,
-        "fret": 3,
+        "string": 3,
+        "fret": 0,
         "start": 8.928,
         "end": 9.056
       }
@@ -980,24 +1000,24 @@ const yeMantramoSong = {
       {
         "word": "C",
         "pitch": "C",
-        "string": 1,
-        "fret": 3,
+        "string": 4,
+        "fret": 1,
         "start": 11.104,
         "end": 11.392
       },
       {
         "word": "G",
         "pitch": "G",
-        "string": 2,
-        "fret": 5,
+        "string": 3,
+        "fret": 0,
         "start": 11.456,
         "end": 11.552
       },
       {
         "word": "C",
         "pitch": "C",
-        "string": 1,
-        "fret": 3,
+        "string": 4,
+        "fret": 1,
         "start": 11.648,
         "end": 12.0
       },
@@ -1020,8 +1040,8 @@ const yeMantramoSong = {
       {
         "word": "B",
         "pitch": "B",
-        "string": 1,
-        "fret": 2,
+        "string": 4,
+        "fret": 0,
         "start": 12.512,
         "end": 12.608
       },
@@ -1046,16 +1066,16 @@ const yeMantramoSong = {
       {
         "word": "A#",
         "pitch": "A#",
-        "string": 0,
-        "fret": 6,
+        "string": 3,
+        "fret": 3,
         "start": 12.928,
         "end": 13.376
       },
       {
         "word": "A#",
         "pitch": "A#",
-        "string": 0,
-        "fret": 6,
+        "string": 3,
+        "fret": 3,
         "start": 13.568,
         "end": 14.016
       },
@@ -1078,16 +1098,16 @@ const yeMantramoSong = {
       {
         "word": "G#",
         "pitch": "G#",
-        "string": 0,
-        "fret": 4,
+        "string": 3,
+        "fret": 1,
         "start": 14.432,
         "end": 14.56
       },
       {
         "word": "C",
         "pitch": "C",
-        "string": 1,
-        "fret": 3,
+        "string": 4,
+        "fret": 1,
         "start": 14.56,
         "end": 14.72
       }
@@ -1096,16 +1116,16 @@ const yeMantramoSong = {
       {
         "word": "A#",
         "pitch": "A#",
-        "string": 1,
-        "fret": 1,
+        "string": 3,
+        "fret": 3,
         "start": 14.752,
         "end": 14.848
       },
       {
         "word": "A",
         "pitch": "A",
-        "string": 1,
-        "fret": 0,
+        "string": 3,
+        "fret": 2,
         "start": 14.848,
         "end": 14.976
       }
@@ -1130,15 +1150,15 @@ const yeMantramoSong = {
       {
         "word": "G",
         "pitch": "G",
-        "string": 0,
-        "fret": 3,
+        "string": 3,
+        "fret": 0,
         "start": 16.416,
         "end": 16.512
       },
       {
         "word": "F",
         "pitch": "F",
-        "string": 0,
+        "string": 5,
         "fret": 1,
         "start": 16.576,
         "end": 16.704
@@ -1154,8 +1174,8 @@ const yeMantramoSong = {
       {
         "word": "A#",
         "pitch": "A#",
-        "string": 1,
-        "fret": 1,
+        "string": 3,
+        "fret": 3,
         "start": 16.832,
         "end": 16.928
       }
@@ -1164,8 +1184,8 @@ const yeMantramoSong = {
       {
         "word": "G",
         "pitch": "G",
-        "string": 0,
-        "fret": 3,
+        "string": 2,
+        "fret": 5,
         "start": 17.952,
         "end": 18.048
       },
@@ -1196,24 +1216,24 @@ const yeMantramoSong = {
       {
         "word": "C",
         "pitch": "C",
-        "string": 1,
-        "fret": 3,
+        "string": 4,
+        "fret": 1,
         "start": 19.04,
         "end": 19.232
       },
       {
         "word": "D#",
         "pitch": "D#",
-        "string": 1,
-        "fret": 6,
+        "string": 4,
+        "fret": 4,
         "start": 19.584,
         "end": 19.776
       },
       {
         "word": "G#",
         "pitch": "G#",
-        "string": 0,
-        "fret": 4,
+        "string": 3,
+        "fret": 1,
         "start": 19.776,
         "end": 20.128
       }
@@ -1222,56 +1242,56 @@ const yeMantramoSong = {
       {
         "word": "C",
         "pitch": "C",
-        "string": 3,
-        "fret": 5,
+        "string": 4,
+        "fret": 1,
         "start": 20.32,
         "end": 20.416
       },
       {
         "word": "D#",
         "pitch": "D#",
-        "string": 1,
-        "fret": 6,
+        "string": 4,
+        "fret": 4,
         "start": 20.512,
         "end": 20.608
       },
       {
         "word": "G#",
         "pitch": "G#",
-        "string": 0,
-        "fret": 4,
+        "string": 3,
+        "fret": 1,
         "start": 20.864,
         "end": 20.96
       },
       {
         "word": "G",
         "pitch": "G",
-        "string": 0,
-        "fret": 3,
+        "string": 3,
+        "fret": 0,
         "start": 20.992,
         "end": 21.088
       },
       {
         "word": "C",
         "pitch": "C",
-        "string": 3,
-        "fret": 5,
+        "string": 4,
+        "fret": 1,
         "start": 21.184,
         "end": 21.28
       },
       {
         "word": "A",
         "pitch": "A",
-        "string": 0,
-        "fret": 5,
+        "string": 3,
+        "fret": 2,
         "start": 21.504,
         "end": 21.6
       },
       {
         "word": "G#",
         "pitch": "G#",
-        "string": 0,
-        "fret": 4,
+        "string": 3,
+        "fret": 1,
         "start": 21.6,
         "end": 21.792
       }
@@ -1280,23 +1300,23 @@ const yeMantramoSong = {
       {
         "word": "G",
         "pitch": "G",
-        "string": 0,
-        "fret": 3,
+        "string": 3,
+        "fret": 0,
         "start": 22.272,
         "end": 22.432
       },
       {
         "word": "G",
         "pitch": "G",
-        "string": 0,
-        "fret": 3,
+        "string": 3,
+        "fret": 0,
         "start": 22.528,
         "end": 22.688
       },
       {
         "word": "F#",
         "pitch": "F#",
-        "string": 0,
+        "string": 5,
         "fret": 2,
         "start": 22.688,
         "end": 22.88
@@ -1304,16 +1324,16 @@ const yeMantramoSong = {
       {
         "word": "G",
         "pitch": "G",
-        "string": 0,
-        "fret": 3,
+        "string": 3,
+        "fret": 0,
         "start": 22.944,
         "end": 23.072
       },
       {
         "word": "C",
         "pitch": "C",
-        "string": 1,
-        "fret": 3,
+        "string": 4,
+        "fret": 1,
         "start": 23.104,
         "end": 23.2
       }
@@ -1322,32 +1342,32 @@ const yeMantramoSong = {
       {
         "word": "G#",
         "pitch": "G#",
-        "string": 0,
-        "fret": 4,
+        "string": 3,
+        "fret": 1,
         "start": 23.968,
         "end": 24.096
       },
       {
         "word": "G",
         "pitch": "G",
-        "string": 0,
-        "fret": 3,
+        "string": 3,
+        "fret": 0,
         "start": 24.096,
         "end": 24.192
       },
       {
         "word": "A#",
         "pitch": "A#",
-        "string": 1,
-        "fret": 1,
+        "string": 3,
+        "fret": 3,
         "start": 24.288,
         "end": 24.384
       },
       {
         "word": "A#",
         "pitch": "A#",
-        "string": 1,
-        "fret": 1,
+        "string": 3,
+        "fret": 3,
         "start": 24.512,
         "end": 24.608
       },
@@ -1370,8 +1390,8 @@ const yeMantramoSong = {
       {
         "word": "C#",
         "pitch": "C#",
-        "string": 1,
-        "fret": 4,
+        "string": 4,
+        "fret": 2,
         "start": 24.96,
         "end": 25.056
       }
@@ -1396,16 +1416,16 @@ const yeMantramoSong = {
       {
         "word": "G#",
         "pitch": "G#",
-        "string": 0,
-        "fret": 4,
+        "string": 3,
+        "fret": 1,
         "start": 26.112,
         "end": 26.208
       },
       {
         "word": "C",
         "pitch": "C",
-        "string": 1,
-        "fret": 3,
+        "string": 4,
+        "fret": 1,
         "start": 26.272,
         "end": 26.432
       },
@@ -1420,8 +1440,8 @@ const yeMantramoSong = {
       {
         "word": "C",
         "pitch": "C",
-        "string": 1,
-        "fret": 3,
+        "string": 4,
+        "fret": 1,
         "start": 27.008,
         "end": 27.104
       },
@@ -1438,24 +1458,24 @@ const yeMantramoSong = {
       {
         "word": "A#",
         "pitch": "A#",
-        "string": 0,
-        "fret": 6,
+        "string": 3,
+        "fret": 3,
         "start": 27.36,
         "end": 27.552
       },
       {
         "word": "C#",
         "pitch": "C#",
-        "string": 5,
-        "fret": 9,
+        "string": 4,
+        "fret": 2,
         "start": 27.68,
         "end": 27.776
       },
       {
         "word": "B",
         "pitch": "B",
-        "string": 5,
-        "fret": 7,
+        "string": 3,
+        "fret": 4,
         "start": 27.84,
         "end": 27.968
       }
@@ -1472,8 +1492,8 @@ const yeMantramoSong = {
       {
         "word": "A#",
         "pitch": "A#",
-        "string": 1,
-        "fret": 1,
+        "string": 3,
+        "fret": 3,
         "start": 28.768,
         "end": 28.896
       },
@@ -1488,7 +1508,7 @@ const yeMantramoSong = {
       {
         "word": "F",
         "pitch": "F",
-        "string": 0,
+        "string": 5,
         "fret": 1,
         "start": 29.28,
         "end": 29.408
@@ -1496,7 +1516,7 @@ const yeMantramoSong = {
       {
         "word": "F",
         "pitch": "F",
-        "string": 0,
+        "string": 5,
         "fret": 1,
         "start": 29.6,
         "end": 29.824
@@ -1522,40 +1542,40 @@ const yeMantramoSong = {
       {
         "word": "D",
         "pitch": "D",
-        "string": 3,
-        "fret": 7,
+        "string": 4,
+        "fret": 3,
         "start": 30.272,
         "end": 30.368
       },
       {
         "word": "D",
         "pitch": "D",
-        "string": 5,
-        "fret": 10,
+        "string": 4,
+        "fret": 3,
         "start": 30.368,
         "end": 30.528
       },
       {
         "word": "G#",
         "pitch": "G#",
-        "string": 0,
-        "fret": 4,
+        "string": 3,
+        "fret": 1,
         "start": 30.624,
         "end": 30.72
       },
       {
         "word": "D#",
         "pitch": "D#",
-        "string": 2,
-        "fret": 1,
+        "string": 4,
+        "fret": 4,
         "start": 30.816,
         "end": 30.912
       },
       {
         "word": "C",
         "pitch": "C",
-        "string": 4,
-        "fret": 1,
+        "string": 3,
+        "fret": 5,
         "start": 30.976,
         "end": 31.232
       },
@@ -1570,8 +1590,8 @@ const yeMantramoSong = {
       {
         "word": "D#",
         "pitch": "D#",
-        "string": 2,
-        "fret": 1,
+        "string": 4,
+        "fret": 4,
         "start": 31.808,
         "end": 31.904
       }
@@ -1580,56 +1600,56 @@ const yeMantramoSong = {
       {
         "word": "G#",
         "pitch": "G#",
-        "string": 0,
-        "fret": 4,
+        "string": 2,
+        "fret": 6,
         "start": 31.904,
         "end": 32.0
       },
       {
         "word": "G#",
         "pitch": "G#",
-        "string": 0,
-        "fret": 4,
+        "string": 2,
+        "fret": 6,
         "start": 32.064,
         "end": 32.352
       },
       {
         "word": "D#",
         "pitch": "D#",
-        "string": 1,
-        "fret": 6,
+        "string": 4,
+        "fret": 4,
         "start": 32.352,
         "end": 32.544
       },
       {
         "word": "A#",
         "pitch": "A#",
-        "string": 2,
-        "fret": 8,
+        "string": 3,
+        "fret": 3,
         "start": 32.576,
         "end": 32.896
       },
       {
         "word": "B",
         "pitch": "B",
-        "string": 5,
-        "fret": 7,
+        "string": 3,
+        "fret": 4,
         "start": 32.96,
         "end": 33.088
       },
       {
         "word": "B",
         "pitch": "B",
-        "string": 5,
-        "fret": 7,
+        "string": 3,
+        "fret": 4,
         "start": 33.568,
         "end": 33.76
       },
       {
         "word": "A#",
         "pitch": "A#",
-        "string": 5,
-        "fret": 6,
+        "string": 3,
+        "fret": 3,
         "start": 33.76,
         "end": 33.856
       }
@@ -1638,8 +1658,8 @@ const yeMantramoSong = {
       {
         "word": "A",
         "pitch": "A",
-        "string": 5,
-        "fret": 5,
+        "string": 3,
+        "fret": 2,
         "start": 33.856,
         "end": 33.952
       },
@@ -1654,8 +1674,8 @@ const yeMantramoSong = {
       {
         "word": "A",
         "pitch": "A",
-        "string": 5,
-        "fret": 5,
+        "string": 3,
+        "fret": 2,
         "start": 34.496,
         "end": 34.592
       },
@@ -1670,24 +1690,24 @@ const yeMantramoSong = {
       {
         "word": "C",
         "pitch": "C",
-        "string": 3,
-        "fret": 5,
+        "string": 4,
+        "fret": 1,
         "start": 35.232,
         "end": 35.616
       },
       {
         "word": "C",
         "pitch": "C",
-        "string": 1,
-        "fret": 3,
+        "string": 4,
+        "fret": 1,
         "start": 35.648,
         "end": 35.904
       },
       {
         "word": "C",
         "pitch": "C",
-        "string": 1,
-        "fret": 3,
+        "string": 4,
+        "fret": 1,
         "start": 36.192,
         "end": 36.448
       }
@@ -1696,16 +1716,16 @@ const yeMantramoSong = {
       {
         "word": "C",
         "pitch": "C",
-        "string": 1,
-        "fret": 3,
+        "string": 4,
+        "fret": 1,
         "start": 37.28,
         "end": 37.376
       },
       {
         "word": "G",
         "pitch": "G",
-        "string": 0,
-        "fret": 3,
+        "string": 3,
+        "fret": 0,
         "start": 37.632,
         "end": 37.76
       }
@@ -1714,40 +1734,40 @@ const yeMantramoSong = {
       {
         "word": "D",
         "pitch": "D",
-        "string": 5,
-        "fret": 10,
+        "string": 4,
+        "fret": 3,
         "start": 38.368,
         "end": 38.464
       },
       {
         "word": "D#",
         "pitch": "D#",
-        "string": 5,
-        "fret": 11,
+        "string": 4,
+        "fret": 4,
         "start": 39.008,
         "end": 39.104
       },
       {
         "word": "C#",
         "pitch": "C#",
-        "string": 5,
-        "fret": 9,
+        "string": 4,
+        "fret": 2,
         "start": 39.456,
         "end": 39.552
       },
       {
         "word": "C",
         "pitch": "C",
-        "string": 5,
-        "fret": 8,
+        "string": 4,
+        "fret": 1,
         "start": 39.552,
         "end": 39.68
       },
       {
         "word": "B",
         "pitch": "B",
-        "string": 5,
-        "fret": 7,
+        "string": 4,
+        "fret": 0,
         "start": 39.68,
         "end": 39.84
       }
@@ -1756,7 +1776,7 @@ const yeMantramoSong = {
       {
         "word": "F",
         "pitch": "F",
-        "string": 0,
+        "string": 5,
         "fret": 1,
         "start": 40.928,
         "end": 41.024
@@ -1764,16 +1784,16 @@ const yeMantramoSong = {
       {
         "word": "F",
         "pitch": "F",
-        "string": 2,
-        "fret": 3,
+        "string": 5,
+        "fret": 1,
         "start": 41.248,
         "end": 41.44
       },
       {
         "word": "G",
         "pitch": "G",
-        "string": 5,
-        "fret": 3,
+        "string": 3,
+        "fret": 0,
         "start": 41.568,
         "end": 41.76
       },
@@ -1790,8 +1810,8 @@ const yeMantramoSong = {
       {
         "word": "F",
         "pitch": "F",
-        "string": 2,
-        "fret": 3,
+        "string": 5,
+        "fret": 1,
         "start": 43.936,
         "end": 44.096
       },
@@ -1806,32 +1826,32 @@ const yeMantramoSong = {
       {
         "word": "F#",
         "pitch": "F#",
-        "string": 0,
-        "fret": 0,
+        "string": 5,
+        "fret": 2,
         "start": 44.576,
         "end": 44.736
       },
       {
         "word": "F",
         "pitch": "F",
-        "string": 0,
-        "fret": 0,
+        "string": 5,
+        "fret": 1,
         "start": 45.056,
         "end": 45.248
       },
       {
         "word": "G",
         "pitch": "G",
-        "string": 0,
-        "fret": 3,
+        "string": 3,
+        "fret": 0,
         "start": 45.504,
         "end": 45.6
       },
       {
         "word": "F",
         "pitch": "F",
-        "string": 0,
-        "fret": 0,
+        "string": 5,
+        "fret": 1,
         "start": 45.632,
         "end": 45.728
       },
@@ -1848,8 +1868,8 @@ const yeMantramoSong = {
       {
         "word": "C",
         "pitch": "C",
-        "string": 4,
-        "fret": 1,
+        "string": 3,
+        "fret": 5,
         "start": 46.112,
         "end": 46.272
       }
@@ -1858,8 +1878,8 @@ const yeMantramoSong = {
       {
         "word": "G",
         "pitch": "G",
-        "string": 5,
-        "fret": 3,
+        "string": 2,
+        "fret": 5,
         "start": 48.32,
         "end": 48.448
       },
@@ -1876,40 +1896,40 @@ const yeMantramoSong = {
       {
         "word": "C",
         "pitch": "C",
-        "string": 3,
-        "fret": 5,
+        "string": 4,
+        "fret": 1,
         "start": 49.696,
         "end": 50.048
       },
       {
         "word": "C",
         "pitch": "C",
-        "string": 1,
-        "fret": 3,
+        "string": 4,
+        "fret": 1,
         "start": 50.272,
         "end": 50.4
       },
       {
         "word": "C",
         "pitch": "C",
-        "string": 1,
-        "fret": 3,
+        "string": 4,
+        "fret": 1,
         "start": 50.592,
         "end": 50.784
       },
       {
         "word": "C",
         "pitch": "C",
-        "string": 1,
-        "fret": 3,
+        "string": 4,
+        "fret": 1,
         "start": 50.944,
         "end": 51.296
       },
       {
         "word": "F#",
         "pitch": "F#",
-        "string": 0,
-        "fret": 0,
+        "string": 5,
+        "fret": 2,
         "start": 51.36,
         "end": 51.52
       }
@@ -1918,15 +1938,15 @@ const yeMantramoSong = {
       {
         "word": "A#",
         "pitch": "A#",
-        "string": 1,
-        "fret": 1,
+        "string": 3,
+        "fret": 3,
         "start": 52.8,
         "end": 52.896
       },
       {
         "word": "F#",
         "pitch": "F#",
-        "string": 0,
+        "string": 5,
         "fret": 2,
         "start": 53.088,
         "end": 53.216
@@ -1934,24 +1954,24 @@ const yeMantramoSong = {
       {
         "word": "C#",
         "pitch": "C#",
-        "string": 1,
-        "fret": 4,
+        "string": 4,
+        "fret": 2,
         "start": 53.408,
         "end": 53.504
       },
       {
         "word": "G",
         "pitch": "G",
-        "string": 0,
-        "fret": 3,
+        "string": 3,
+        "fret": 0,
         "start": 53.6,
         "end": 53.792
       },
       {
         "word": "A#",
         "pitch": "A#",
-        "string": 1,
-        "fret": 1,
+        "string": 3,
+        "fret": 3,
         "start": 53.92,
         "end": 54.112
       },
@@ -1976,16 +1996,16 @@ const yeMantramoSong = {
       {
         "word": "G",
         "pitch": "G",
-        "string": 0,
-        "fret": 3,
+        "string": 2,
+        "fret": 5,
         "start": 55.904,
         "end": 56.032
       },
       {
         "word": "D#",
         "pitch": "D#",
-        "string": 2,
-        "fret": 1,
+        "string": 4,
+        "fret": 4,
         "start": 56.032,
         "end": 56.128
       },
@@ -2008,8 +2028,8 @@ const yeMantramoSong = {
       {
         "word": "D#",
         "pitch": "D#",
-        "string": 2,
-        "fret": 1,
+        "string": 4,
+        "fret": 4,
         "start": 56.8,
         "end": 56.928
       }
@@ -2018,16 +2038,16 @@ const yeMantramoSong = {
       {
         "word": "F",
         "pitch": "F",
-        "string": 0,
-        "fret": 1,
+        "string": 4,
+        "fret": 6,
         "start": 58.08,
         "end": 58.176
       },
       {
         "word": "D",
         "pitch": "D",
-        "string": 2,
-        "fret": 0,
+        "string": 4,
+        "fret": 3,
         "start": 58.24,
         "end": 58.336
       }
@@ -2036,23 +2056,23 @@ const yeMantramoSong = {
       {
         "word": "G",
         "pitch": "G",
-        "string": 0,
-        "fret": 3,
+        "string": 3,
+        "fret": 0,
         "start": 58.944,
         "end": 59.04
       },
       {
         "word": "G",
         "pitch": "G",
-        "string": 0,
-        "fret": 3,
+        "string": 3,
+        "fret": 0,
         "start": 59.104,
         "end": 59.232
       },
       {
         "word": "F",
         "pitch": "F",
-        "string": 0,
+        "string": 5,
         "fret": 1,
         "start": 59.584,
         "end": 59.712
@@ -2060,32 +2080,32 @@ const yeMantramoSong = {
       {
         "word": "C#",
         "pitch": "C#",
-        "string": 5,
-        "fret": 9,
+        "string": 4,
+        "fret": 2,
         "start": 59.776,
         "end": 59.872
       },
       {
         "word": "C",
         "pitch": "C",
-        "string": 5,
-        "fret": 8,
+        "string": 4,
+        "fret": 1,
         "start": 60.288,
         "end": 60.704
       },
       {
         "word": "C",
         "pitch": "C",
-        "string": 0,
-        "fret": 8,
+        "string": 4,
+        "fret": 1,
         "start": 60.704,
         "end": 60.832
       },
       {
         "word": "C",
         "pitch": "C",
-        "string": 0,
-        "fret": 8,
+        "string": 4,
+        "fret": 1,
         "start": 60.928,
         "end": 61.056
       }
@@ -2094,24 +2114,24 @@ const yeMantramoSong = {
       {
         "word": "C",
         "pitch": "C",
-        "string": 0,
-        "fret": 8,
+        "string": 4,
+        "fret": 1,
         "start": 61.248,
         "end": 61.408
       },
       {
         "word": "C",
         "pitch": "C",
-        "string": 5,
-        "fret": 8,
+        "string": 4,
+        "fret": 1,
         "start": 61.696,
         "end": 61.888
       },
       {
         "word": "D#",
         "pitch": "D#",
-        "string": 5,
-        "fret": 11,
+        "string": 4,
+        "fret": 4,
         "start": 62.048,
         "end": 62.208
       }
@@ -2120,31 +2140,31 @@ const yeMantramoSong = {
       {
         "word": "B",
         "pitch": "B",
-        "string": 0,
-        "fret": 7,
+        "string": 3,
+        "fret": 4,
         "start": 63.776,
         "end": 63.904
       },
       {
         "word": "C",
         "pitch": "C",
-        "string": 0,
-        "fret": 8,
+        "string": 3,
+        "fret": 5,
         "start": 64.256,
         "end": 64.512
       },
       {
         "word": "A#",
         "pitch": "A#",
-        "string": 0,
-        "fret": 6,
+        "string": 3,
+        "fret": 3,
         "start": 64.608,
         "end": 64.704
       },
       {
         "word": "F#",
         "pitch": "F#",
-        "string": 0,
+        "string": 5,
         "fret": 2,
         "start": 64.704,
         "end": 64.832
@@ -2152,16 +2172,16 @@ const yeMantramoSong = {
       {
         "word": "D#",
         "pitch": "D#",
-        "string": 5,
-        "fret": 11,
+        "string": 4,
+        "fret": 4,
         "start": 65.12,
         "end": 65.28
       },
       {
         "word": "D#",
         "pitch": "D#",
-        "string": 5,
-        "fret": 11,
+        "string": 4,
+        "fret": 4,
         "start": 65.44,
         "end": 65.536
       },
@@ -2178,16 +2198,16 @@ const yeMantramoSong = {
       {
         "word": "G",
         "pitch": "G",
-        "string": 0,
-        "fret": 3,
+        "string": 2,
+        "fret": 5,
         "start": 66.272,
         "end": 66.368
       },
       {
         "word": "D#",
         "pitch": "D#",
-        "string": 5,
-        "fret": 11,
+        "string": 4,
+        "fret": 4,
         "start": 66.464,
         "end": 66.56
       },
@@ -2202,32 +2222,32 @@ const yeMantramoSong = {
       {
         "word": "G",
         "pitch": "G",
-        "string": 0,
-        "fret": 3,
+        "string": 2,
+        "fret": 5,
         "start": 67.232,
         "end": 67.328
       },
       {
         "word": "D#",
         "pitch": "D#",
-        "string": 5,
-        "fret": 11,
+        "string": 4,
+        "fret": 4,
         "start": 67.328,
         "end": 67.488
       },
       {
         "word": "D#",
         "pitch": "D#",
-        "string": 1,
-        "fret": 6,
+        "string": 4,
+        "fret": 4,
         "start": 67.488,
         "end": 67.616
       },
       {
         "word": "D",
         "pitch": "D",
-        "string": 1,
-        "fret": 5,
+        "string": 4,
+        "fret": 3,
         "start": 67.872,
         "end": 67.968
       }
@@ -2246,16 +2266,16 @@ const yeMantramoSong = {
       {
         "word": "G",
         "pitch": "G",
-        "string": 0,
-        "fret": 3,
+        "string": 2,
+        "fret": 5,
         "start": 68.96,
         "end": 69.28
       },
       {
         "word": "F",
         "pitch": "F",
-        "string": 0,
-        "fret": 1,
+        "string": 4,
+        "fret": 6,
         "start": 69.408,
         "end": 69.568
       }
@@ -2264,16 +2284,16 @@ const yeMantramoSong = {
       {
         "word": "D#",
         "pitch": "D#",
-        "string": 5,
-        "fret": 11,
+        "string": 4,
+        "fret": 4,
         "start": 70.816,
         "end": 70.912
       },
       {
         "word": "G",
         "pitch": "G",
-        "string": 0,
-        "fret": 3,
+        "string": 2,
+        "fret": 5,
         "start": 70.912,
         "end": 71.072
       },
@@ -2288,16 +2308,16 @@ const yeMantramoSong = {
       {
         "word": "C",
         "pitch": "C",
-        "string": 0,
-        "fret": 8,
+        "string": 3,
+        "fret": 5,
         "start": 71.264,
         "end": 71.36
       },
       {
         "word": "C",
         "pitch": "C",
-        "string": 5,
-        "fret": 8,
+        "string": 3,
+        "fret": 5,
         "start": 71.808,
         "end": 71.904
       },
@@ -2312,8 +2332,8 @@ const yeMantramoSong = {
       {
         "word": "G",
         "pitch": "G",
-        "string": 0,
-        "fret": 3,
+        "string": 2,
+        "fret": 5,
         "start": 72.48,
         "end": 72.576
       }
@@ -2322,31 +2342,31 @@ const yeMantramoSong = {
       {
         "word": "D#",
         "pitch": "D#",
-        "string": 5,
-        "fret": 11,
+        "string": 4,
+        "fret": 4,
         "start": 73.472,
         "end": 73.568
       },
       {
         "word": "G",
         "pitch": "G",
-        "string": 0,
-        "fret": 3,
+        "string": 2,
+        "fret": 5,
         "start": 73.568,
         "end": 73.696
       },
       {
         "word": "D#",
         "pitch": "D#",
-        "string": 2,
-        "fret": 1,
+        "string": 4,
+        "fret": 4,
         "start": 73.76,
         "end": 73.856
       },
       {
         "word": "F",
         "pitch": "F",
-        "string": 0,
+        "string": 5,
         "fret": 1,
         "start": 74.304,
         "end": 74.432
@@ -2354,8 +2374,8 @@ const yeMantramoSong = {
       {
         "word": "C",
         "pitch": "C",
-        "string": 1,
-        "fret": 3,
+        "string": 4,
+        "fret": 1,
         "start": 74.464,
         "end": 74.592
       }

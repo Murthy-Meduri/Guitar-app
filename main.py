@@ -277,8 +277,13 @@ def process(req: ProcessRequest, request: Request, background_tasks: BackgroundT
             "status": "done",
             "step": "Complete (from Google Drive / Cache)",
             "result": {
+                "key": cached_data.get("key", "C Minor"),
+                "bpm": cached_data.get("bpm", 100),
+                "strum": cached_data.get("strum", "D - D U - U D -"),
+                "chords": cached_data.get("chords", []),
                 "notes": cached_data.get("notes", []),
-                "audio_url": f"/audio/{job_id}",
+                "audio_url": f"/guitar-audio/{job_id}",
+                "guitar_audio_url": f"/guitar-audio/{job_id}",
                 "song_id": job_id,
                 "title": cached.get("title", req.query),
                 "drive_synced": True
@@ -316,8 +321,13 @@ async def process_audio(
                 "status": "done",
                 "step": "Complete (from Google Drive / Cache)",
                 "result": {
+                    "key": cached_data.get("key", "C Minor"),
+                    "bpm": cached_data.get("bpm", 100),
+                    "strum": cached_data.get("strum", "D - D U - U D -"),
+                    "chords": cached_data.get("chords", []),
                     "notes": cached_data.get("notes", []),
-                    "audio_url": f"/audio/{job_id}",
+                    "audio_url": f"/guitar-audio/{job_id}",
+                    "guitar_audio_url": f"/guitar-audio/{job_id}",
                     "song_id": job_id,
                     "title": cached.get("title", query),
                     "drive_synced": True
@@ -352,22 +362,95 @@ def status(job_id: str):
     return job
 
 
-@app.get("/audio/{job_id}")
-def get_audio(job_id: str):
-    path = os.path.join(JOBS_DIR, job_id, "audio.wav")
-    if not os.path.exists(path):
-        raise HTTPException(404, "audio not found")
-    return FileResponse(path, media_type="audio/wav")
-
-
 @app.get("/guitar-audio/{job_id}")
 def get_guitar_audio(job_id: str):
     path = os.path.join(JOBS_DIR, job_id, "guitar.wav")
     if not os.path.exists(path):
-        path = os.path.join(JOBS_DIR, job_id, "audio.wav")
+        job = _get_job(job_id)
+        if job and job.get("result", {}).get("notes"):
+            notes = job["result"]["notes"]
+            tot_dur = max(float(n.get("end", 0.0)) for n in notes) if notes else 10.0
+            from pipeline import synthesize_guitar_audio
+            synthesize_guitar_audio(notes, tot_dur, path)
     if not os.path.exists(path):
-        raise HTTPException(404, "guitar audio not found")
+        raise HTTPException(404, "Guitar solo audio track not found")
     return FileResponse(path, media_type="audio/wav")
+
+
+def _write_midi(notes, out_path, tempo_bpm=100, program=25):
+    ticks_per_beat = 480
+    sec_per_tick = 60.0 / (max(40, tempo_bpm) * ticks_per_beat)
+    events = []
+    STRINGS_MIDI = [40, 45, 50, 55, 59, 64]
+    for n in notes:
+        st = float(n.get('start', 0.0))
+        en = float(n.get('end', st + 0.4))
+        s_idx = min(5, max(0, int(n.get('string', 3))))
+        fret = min(24, max(0, int(n.get('fret', 0))))
+        midi_pitch = STRINGS_MIDI[s_idx] + fret
+        events.append((st, 0x90, midi_pitch, 90))
+        events.append((en, 0x80, midi_pitch, 0))
+    events.sort(key=lambda x: (x[0], 0 if x[1] == 0x80 else 1))
+
+    track_bytes = bytearray([0x00, 0xC0, program])
+    last_time = 0.0
+    for t, status, pitch, vel in events:
+        delta_ticks = int(round(max(0.0, t - last_time) / sec_per_tick))
+        last_time = t
+        val = delta_ticks
+        buf = [val & 0x7F]
+        while val > 0x7F:
+            val >>= 7
+            buf.append((val & 0x7F) | 0x80)
+        track_bytes.extend(reversed(buf))
+        track_bytes.extend([status, pitch, vel])
+    track_bytes.extend([0x00, 0xFF, 0x2F, 0x00])
+
+    header = bytearray(b'MThd')
+    header.extend((6).to_bytes(4, 'big'))
+    header.extend((0).to_bytes(2, 'big'))
+    header.extend((1).to_bytes(2, 'big'))
+    header.extend(ticks_per_beat.to_bytes(2, 'big'))
+
+    track_chunk = bytearray(b'MTrk')
+    track_chunk.extend(len(track_bytes).to_bytes(4, 'big'))
+    track_chunk.extend(track_bytes)
+    with open(out_path, 'wb') as f:
+        f.write(header + track_chunk)
+
+
+@app.get("/export/midi/{job_id}")
+def export_midi(job_id: str):
+    job = _get_job(job_id)
+    if not job or not job.get("result", {}).get("notes"):
+        raise HTTPException(404, "Job notes not found")
+    midi_path = os.path.join(JOBS_DIR, job_id, "solo_guitar.mid")
+    bpm = int(job.get("result", {}).get("bpm", 100))
+    _write_midi(job["result"]["notes"], midi_path, tempo_bpm=bpm)
+    return FileResponse(midi_path, media_type="audio/midi", filename=f"guitar_solo_{job_id[:6]}.mid")
+
+
+@app.get("/export/tab/{job_id}")
+def export_tab(job_id: str):
+    job = _get_job(job_id)
+    if not job or not job.get("result", {}).get("notes"):
+        raise HTTPException(404, "Job notes not found")
+    notes = job["result"]["notes"]
+    labels = ["e", "B", "G", "D", "A", "E"]
+    order = [5, 4, 3, 2, 1, 0]
+    out_lines = [f"{lbl}|" for lbl in labels]
+    for n in notes:
+        s_idx = int(n.get("string", 3))
+        f_str = str(n.get("fret", 0))
+        for ri, si in enumerate(order):
+            out_lines[ri] += f"-{f_str if si == s_idx else '-' * len(f_str)}-"
+    for ri in range(6):
+        out_lines[ri] += "|"
+    tab_text = f"# Solo Guitar Tab - {job.get('result', {}).get('title', 'Transcribed')}\n# Key: {job.get('result', {}).get('key')} | BPM: {job.get('result', {}).get('bpm')}\n\n" + "\n".join(out_lines) + "\n"
+    tab_path = os.path.join(JOBS_DIR, job_id, "tab.txt")
+    with open(tab_path, "w", encoding="utf-8") as f:
+        f.write(tab_text)
+    return FileResponse(tab_path, media_type="text/plain", filename=f"tab_{job_id[:6]}.txt")
 
 
 # --- Google Drive & local song persistence ---

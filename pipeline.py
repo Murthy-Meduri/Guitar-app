@@ -439,19 +439,23 @@ def optimize_fretting(notes: List[AlignedNote]) -> List[FretPosition]:
 
     candidates: List[List[tuple]] = []
     for note in notes:
-        target_midi = note_to_midi(note.note_name, note.octave)
+        pc_name = note.note_name
+        if pc_name in NOTE_NAMES:
+            pc = NOTE_NAMES.index(pc_name)
+            # Center melody in natural lead guitar solo range: G3 to G5 (MIDI 55 to 79)
+            if pc in [7, 8, 9, 10, 11]:  # G, G#, A, A#, B -> Octave 3 (MIDI 55-59)
+                target_midi = 12 * 3 + pc + 12
+            else:  # C, C#, D, D#, E, F, F# -> Octave 4 (MIDI 60-66)
+                target_midi = 12 * 4 + pc + 12
+        else:
+            target_midi = note_to_midi(note.note_name, note.octave)
+
         opts = []
-        for si, s in enumerate(STRINGS):
-            fret = target_midi - s["open_midi"]
+        for si in [4, 3, 5, 2, 1, 0]:  # Prioritize B, G, high e, and D strings for solo melody
+            fret = target_midi - STRINGS[si]["open_midi"]
             if 0 <= fret <= MAX_FRET:
                 opts.append((si, fret))
-        if not opts:
-            target_midi += 12
-            for si, s in enumerate(STRINGS):
-                fret = target_midi - s["open_midi"]
-                if 0 <= fret <= MAX_FRET:
-                    opts.append((si, fret))
-        candidates.append(opts or [(0, 0)])
+        candidates.append(opts or [(3, 0)])
 
     INF = float("inf")
     dp = [{} for _ in range(n)]
@@ -554,27 +558,28 @@ def estimate_key_and_chords(y: np.ndarray, sr: int) -> dict:
 
 
 def synthesize_guitar_audio(notes: List[dict], total_duration: float, out_wav_path: str, sr: int = 22050):
-    """Synthesize authentic acoustic guitar pluck audio for generated tabs using Karplus-Strong physical modeling."""
+    """Synthesize authentic acoustic guitar solo audio for generated tabs using Karplus-Strong physical modeling with soundboard resonance."""
     import soundfile as sf
+    from scipy import signal
 
-    total_samples = max(int(sr * (total_duration + 2.0)), sr * 2)
+    total_samples = max(int(sr * (total_duration + 2.5)), sr * 2)
     track = np.zeros(total_samples, dtype=np.float32)
 
     STRING_OPENS = [82.41, 110.00, 146.83, 196.00, 246.94, 329.63]
 
     for n in notes:
         st = float(n.get("start", 0.0))
-        dur = max(0.4, min(2.5, float(n.get("end", st + 0.5)) - st))
-        s_idx = max(0, min(5, int(n.get("string", 2))))
+        dur = max(0.35, min(2.5, float(n.get("end", st + 0.5)) - st))
+        s_idx = max(0, min(5, int(n.get("string", 3))))
         fret = max(0, min(15, int(n.get("fret", 0))))
         freq = STRING_OPENS[s_idx] * (2.0 ** (fret / 12.0))
 
         delay_len = max(2, int(round(sr / freq)))
-        noise = np.random.uniform(-0.7, 0.7, delay_len).astype(np.float32)
+        noise = np.random.uniform(-0.8, 0.8, delay_len).astype(np.float32)
         n_samples = int(sr * dur)
         buf = np.zeros(n_samples, dtype=np.float32)
         buf[:delay_len] = noise
-        decay = 0.993
+        decay = 0.994  # realistic acoustic sustain
         for i in range(delay_len, n_samples):
             buf[i] = 0.5 * (buf[i - delay_len] + buf[i - delay_len - 1]) * decay
 
@@ -583,7 +588,16 @@ def synthesize_guitar_audio(notes: List[dict], total_duration: float, out_wav_pa
         if end_samp > total_samples:
             end_samp = total_samples
             buf = buf[:end_samp - start_samp]
-        track[start_samp:end_samp] += buf * 0.45
+        track[start_samp:end_samp] += buf * 0.5
+
+    # Acoustic guitar body resonance (air cavity ~105Hz and soundboard ~210Hz)
+    try:
+        b1, a1 = signal.iirpeak(105.0, 3.5, fs=sr)
+        b2, a2 = signal.iirpeak(210.0, 3.0, fs=sr)
+        res = signal.lfilter(b1, a1, track) * 0.35 + signal.lfilter(b2, a2, track) * 0.25
+        track = track * 0.75 + res
+    except Exception:
+        pass
 
     max_val = float(np.max(np.abs(track)))
     if max_val > 0.01:
