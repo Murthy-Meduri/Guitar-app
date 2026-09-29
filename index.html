@@ -64,6 +64,90 @@ footer{text-align:center;font-size:.72rem;opacity:.5;margin-top:30px}
 .tab-pre{font-family:'Courier New',monospace;font-size:.78rem;line-height:1.55;color:var(--ink);margin:0;white-space:pre}
 .neck-wrap{overflow-x:auto;background:linear-gradient(180deg,#4a3320,#3a2818);border-radius:8px;padding:16px 10px}
 .neck-svg text{font-family:'Inter',sans-serif}
+
+/* Animated 6-Line TAB Staff (Asher Thomas YouTube Short Style) */
+.tab-stage {
+  background: #140f0a;
+  border: 1px solid #3d2b1d;
+  border-radius: 8px;
+  margin: 12px 0;
+  box-shadow: inset 0 2px 10px rgba(0,0,0,0.6), 0 4px 15px rgba(0,0,0,0.3);
+  position: relative;
+  overflow: hidden;
+}
+.tab-header-bar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 12px;
+  background: #1e1610;
+  border-bottom: 1px solid #332317;
+  font-size: 0.78rem;
+  color: #c9b98a;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.tab-viewport {
+  display: flex;
+  position: relative;
+  height: 226px;
+  background: #140f0a;
+}
+.tab-gutter {
+  width: 44px;
+  flex-shrink: 0;
+  background: #1b130c;
+  border-right: 2px solid #b8863b;
+  z-index: 10;
+  position: sticky;
+  left: 0;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 4px 0 10px rgba(0,0,0,0.5);
+}
+.tab-gutter-label {
+  height: 26px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: monospace;
+  font-size: 1rem;
+  font-weight: 700;
+  color: #e5b95f;
+  text-shadow: 0 0 6px rgba(229,185,95,0.4);
+}
+.tab-track-container {
+  flex: 1;
+  overflow-x: auto;
+  overflow-y: hidden;
+  position: relative;
+  scroll-behavior: smooth;
+  user-select: none;
+}
+.tab-svg-board {
+  display: block;
+  min-width: 100%;
+  height: 226px;
+}
+.tab-note-badge {
+  transition: all 0.12s ease-out;
+  cursor: pointer;
+}
+.tab-note-badge:hover {
+  fill: #422d1c !important;
+  stroke: #f59e0b !important;
+  stroke-width: 2.5;
+}
+.tab-note-badge.active {
+  fill: #f59e0b !important;
+  stroke: #ffffff !important;
+  stroke-width: 3 !important;
+  filter: drop-shadow(0 0 10px #f59e0b);
+}
+.tab-note-group.active text.tab-fret-text {
+  fill: #140f0a !important;
+  font-weight: 800;
+}
 </style>
 </head>
 <body>
@@ -142,11 +226,12 @@ footer{text-align:center;font-size:.72rem;opacity:.5;margin-top:30px}
       <option value="0.5">0.5x</option>
       <option value="0.75">0.75x</option>
       <option value="1" selected>1.0x</option>
+      <option value="1.25">1.25x</option>
     </select>
     <select id="notationMode">
-      <option value="notebook">Notebook Style</option>
-      <option value="tab">6-Line Standard TAB</option>
-      <option value="chords">Chords Only</option>
+      <option value="tab" selected>🎸 6-Line Animated TAB (Video Style)</option>
+      <option value="notebook">📝 Letter-Note Notebook</option>
+      <option value="chords">🎼 Chords Only</option>
     </select>
     <select id="songSel"></select>
     <button class="btn ghost small" id="loopABtn">Loop A</button>
@@ -451,6 +536,7 @@ function wireAudioSync(song){
     const idx=flat.findIndex(f=>t>=f.start && t<f.end);
     if(idx>=0){
       highlightFret(flat[idx].string, flat[idx].fret);
+      if(typeof updatePlayhead === "function") updatePlayhead(idx, true);
       document.querySelectorAll(".note-col.active").forEach(e=>e.classList.remove("active"));
       const col=lyricsArea.querySelector(`.note-col[data-flat="${idx}"]`);
       if(col) col.classList.add("active");
@@ -728,10 +814,15 @@ if(playCustomMelodyBtn){
     };
 
     buildFret(song);
+    ensureTimings(song);
     songs.push(song);
     refreshAll();
     songSel.value = songs.length - 1;
     currentSong = song;
+    notationMode = "tab";
+    document.getElementById("notationMode").value = "tab";
+    realAudio.style.display = "none";
+    realAudio.src = "";
     renderMeta();
     renderChords();
     renderNotation();
@@ -745,6 +836,93 @@ if(playCustomMelodyBtn){
 }
 
 // ---------- Song data ----------
+const asherIntroSong = {
+  title: "🎸 Nenjukkul Peidhidum — Intro Tab (Asher Thomas Reference)",
+  key: "D Major",
+  bpm: 92,
+  strum: "Fingerstyle Pluck",
+  chords: ["D", "Bm", "G", "A"],
+  sections: ["Phrase 1", "Phrase 2", "Phrase 3", "Phrase 4", "Phrase 5", "Phrase 6"],
+  lines: [
+    [
+      { word: "2/4", pitch: "F#3", string: 2, fret: 4, slide: "2/4", desc: "Slide 2 to 4 on D" },
+      { word: "2", pitch: "A3", string: 3, fret: 2, desc: "Fret 2 on G" },
+      { word: "3", pitch: "D4", string: 4, fret: 3, desc: "Fret 3 on B" },
+      { word: "5", pitch: "A4", string: 5, fret: 5, desc: "Fret 5 on e" },
+      { word: "3", pitch: "G4", string: 5, fret: 3, desc: "Fret 3 on e" },
+      { word: "5", pitch: "A4", string: 5, fret: 5, desc: "Fret 5 on e" },
+      { word: "3", pitch: "G4", string: 5, fret: 3, desc: "Fret 3 on e" }
+    ],
+    [
+      { word: "6\\4", pitch: "D#4", string: 4, fret: 4, slide: "6\\4", desc: "Slide 6 to 4 on B" },
+      { word: "2", pitch: "C#4", string: 4, fret: 2, desc: "Fret 2 on B" },
+      { word: "2", pitch: "C#4", string: 4, fret: 2, desc: "Fret 2 on B" }
+    ],
+    [
+      { word: "4-6-4", pitch: "B3", string: 3, fret: 4, slide: "4-6-4", desc: "Hammer/pull 4-6-4 on G" },
+      { word: "4", pitch: "F#3", string: 2, fret: 4, desc: "Fret 4 on D" },
+      { word: "2", pitch: "A3", string: 3, fret: 2, desc: "Fret 2 on G" }
+    ],
+    [
+      { word: "2/4", pitch: "F#3", string: 2, fret: 4, slide: "2/4", desc: "Slide 2 to 4 on D" },
+      { word: "2", pitch: "A3", string: 3, fret: 2, desc: "Fret 2 on G" },
+      { word: "3", pitch: "D4", string: 4, fret: 3, desc: "Fret 3 on B" },
+      { word: "5", pitch: "A4", string: 5, fret: 5, desc: "Fret 5 on e" },
+      { word: "3", pitch: "G4", string: 5, fret: 3, desc: "Fret 3 on e" },
+      { word: "5", pitch: "A4", string: 5, fret: 5, desc: "Fret 5 on e" },
+      { word: "3", pitch: "G4", string: 5, fret: 3, desc: "Fret 3 on e" }
+    ],
+    [
+      { word: "6\\4", pitch: "D#4", string: 4, fret: 4, slide: "6\\4", desc: "Slide 6 to 4 on B" },
+      { word: "2", pitch: "C#4", string: 4, fret: 2, desc: "Fret 2 on B" },
+      { word: "2", pitch: "C#4", string: 4, fret: 2, desc: "Fret 2 on B" }
+    ],
+    [
+      { word: "4-6-4", pitch: "B3", string: 3, fret: 4, slide: "4-6-4", desc: "Hammer/pull 4-6-4 on G" },
+      { word: "4", pitch: "F#3", string: 2, fret: 4, desc: "Fret 4 on D" },
+      { word: "2", pitch: "A3", string: 3, fret: 2, desc: "Fret 2 on G" }
+    ]
+  ]
+};
+
+const userMelodySong = {
+  title: "🎵 Melody: C C C D | B B A | B A | G A | E | C B C",
+  key: "C Major",
+  bpm: 104,
+  strum: "Lead Pluck",
+  chords: ["C", "G", "Am", "F", "Em", "C"],
+  sections: ["Bar 1", "Bar 2", "Bar 3", "Bar 4", "Bar 5", "Bar 6"],
+  lines: [
+    [
+      { word: "C", pitch: "C4", string: 4, fret: 1 },
+      { word: "C", pitch: "C4", string: 4, fret: 1 },
+      { word: "C", pitch: "C4", string: 4, fret: 1 },
+      { word: "D", pitch: "D4", string: 4, fret: 3 }
+    ],
+    [
+      { word: "B", pitch: "B3", string: 4, fret: 0 },
+      { word: "B", pitch: "B3", string: 4, fret: 0 },
+      { word: "A", pitch: "A3", string: 3, fret: 2 }
+    ],
+    [
+      { word: "B", pitch: "B3", string: 4, fret: 0 },
+      { word: "A", pitch: "A3", string: 3, fret: 2 }
+    ],
+    [
+      { word: "G", pitch: "G3", string: 3, fret: 0 },
+      { word: "A", pitch: "A3", string: 3, fret: 2 }
+    ],
+    [
+      { word: "E", pitch: "E4", string: 5, fret: 0 }
+    ],
+    [
+      { word: "C", pitch: "C4", string: 4, fret: 1 },
+      { word: "B", pitch: "B3", string: 4, fret: 0 },
+      { word: "C", pitch: "C4", string: 4, fret: 1 }
+    ]
+  ]
+};
+
 const DEMO_LYRICS=[
   ["Le","pa","dha","pa","dhaa"],
   ["zin","da","gi","ko","bana"],
@@ -756,23 +934,52 @@ const DEMO_PITCH=[
   ["D","E","F#","E","D"]
 ];
 const demoSong = {
-  title:"Le Padha Padhaa", key:"D Major", bpm:100, strum:"D - DU - UDU",
-  chords:["D","G","A","Bm"],
+  title: "🎶 Le Padha Padhaa — Bollywood Lead",
+  key: "D Major",
+  bpm: 100,
+  strum: "D - DU - UDU",
+  chords: ["D","G","A","Bm"],
   lines: DEMO_LYRICS.map((words,li)=>words.map((w,wi)=>({word:w,pitch:DEMO_PITCH[li][wi]}))),
-  sections:["Verse","Verse","Chorus"]
+  sections: ["Verse","Verse","Chorus"]
 };
-let songs = [demoSong]; // AI-fetched songs are pushed in at runtime; no local Song Creator anymore
 
+let songs = [asherIntroSong, userMelodySong, demoSong];
 let currentSong = songs[0];
-let notationMode = "notebook";
+let notationMode = "tab";
+let autoScrollEnabled = true;
+
+function ensureTimings(song){
+  const bpm = song.bpm || 96;
+  const secPerBeat = 60 / bpm;
+  let curr = 0.3;
+  song.lines.forEach(line => {
+    line.forEach(tok => {
+      if(tok.start === undefined || tok.end === undefined || tok.end <= tok.start){
+        tok.start = curr;
+        tok.end = curr + secPerBeat * 0.9;
+        curr += secPerBeat;
+      }
+    });
+    curr += secPerBeat * 0.4;
+  });
+}
+ensureTimings(asherIntroSong);
+ensureTimings(userMelodySong);
+ensureTimings(demoSong);
 
 function buildFret(song){
-  // Run the DP optimizer across the whole song at once so hand position stays
-  // consistent across line breaks, not just within a line.
   const flatTokens=[]; song.lines.forEach(line=>line.forEach(tok=>flatTokens.push(tok)));
   if(!flatTokens.length) return;
-  const path=optimizeFrettingDP(flatTokens.map(t=>t.pitch));
-  flatTokens.forEach((tok,i)=>{ tok.string=path[i].string; tok.fret=path[i].fret; });
+  const needsOpt = flatTokens.some(t => t.string === undefined || t.fret === undefined || (t.string === 0 && t.fret === 0 && t.pitch !== "E2"));
+  if(needsOpt){
+    const path=optimizeFrettingDP(flatTokens.map(t=>t.pitch));
+    flatTokens.forEach((tok,i)=>{
+      if(tok.string === undefined || tok.fret === undefined || (tok.string === 0 && tok.fret === 0 && t.pitch !== "E2")){
+        tok.string=path[i].string;
+        tok.fret=path[i].fret;
+      }
+    });
+  }
 }
 buildFret(currentSong);
 
@@ -802,30 +1009,235 @@ function fretLabel(tok){
   return stringLabel(tok.string)+"<sup>"+tok.fret+"</sup>";
 }
 function flattenSong(song){ const flat=[]; song.lines.forEach(l=>l.forEach(t=>flat.push(t))); return flat; }
-function buildTabLines(song){
-  const order=[5,4,3,2,1,0]; const labels=["e","B","G","D","A","E"];
-  return song.lines.map(line=>{
-    const rows=labels.map(()=>[]);
-    line.forEach(tok=>{
-      const f=String(tok.fret);
-      order.forEach((si,ri)=>{ rows[ri].push(si===tok.string?f:"-".repeat(f.length)); });
-    });
-    return rows.map((cells,ri)=>labels[ri]+"|-"+cells.join("-")+"-|");
-  });
-}
+
+// Animated 6-Line Tab Staff Data & Coordinates
+const TAB_STRING_Y = { 5: 47, 4: 73, 3: 99, 2: 125, 1: 151, 0: 177 };
+let tabNotePositions = [];
+
 function renderTabView(){
   lyricsArea.className="";
-  lyricsArea.innerHTML="";
-  const tabLines=buildTabLines(currentSong);
-  currentSong.lines.forEach((line,li)=>{
-    const block=document.createElement("div"); block.className="line-block";
-    const sec=currentSong.sections&&currentSong.sections[li];
-    if(sec){ const h=document.createElement("div"); h.style.cssText="font-size:.7rem;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--brass-2);margin-bottom:4px"; h.textContent=sec; block.appendChild(h); }
-    const pre=document.createElement("pre"); pre.className="tab-pre"; pre.textContent=tabLines[li].join("\n");
-    block.appendChild(pre);
-    lyricsArea.appendChild(block);
+  lyricsArea.innerHTML=`
+    <div class="tab-stage" id="tabStage">
+      <div class="tab-header-bar">
+        <div style="display:flex;align-items:center;gap:12px">
+          <span style="font-weight:700;letter-spacing:0.04em;color:#e5b95f">🎸 6-LINE ANIMATED TAB</span>
+          <span id="tabSongTitleBadge" style="opacity:0.85;font-size:0.75rem">${currentSong.title}</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:12px">
+          <label style="display:flex;align-items:center;gap:5px;cursor:pointer;font-size:0.75rem;color:#e8dcc0">
+            <input type="checkbox" id="tabAutoScrollCheck" ${autoScrollEnabled ? "checked" : ""}> Follow Cursor
+          </label>
+          <span style="font-size:0.72rem;opacity:0.65">Tap any fret to play</span>
+        </div>
+      </div>
+      <div class="tab-viewport">
+        <div class="tab-gutter">
+          <div style="height:34px"></div>
+          <div class="tab-gutter-label">e</div>
+          <div class="tab-gutter-label">B</div>
+          <div class="tab-gutter-label">G</div>
+          <div class="tab-gutter-label">D</div>
+          <div class="tab-gutter-label">A</div>
+          <div class="tab-gutter-label">E</div>
+          <div style="height:32px"></div>
+        </div>
+        <div class="tab-track-container" id="tabTrackScroll">
+          <svg id="tabSvgBoard" class="tab-svg-board"></svg>
+        </div>
+      </div>
+    </div>
+  `;
+
+  const autoScrollCheck = document.getElementById("tabAutoScrollCheck");
+  if(autoScrollCheck){
+    autoScrollCheck.onchange = () => { autoScrollEnabled = autoScrollCheck.checked; };
+  }
+
+  const svg = document.getElementById("tabSvgBoard");
+  if(!svg) return;
+  svg.innerHTML = "";
+  tabNotePositions = [];
+
+  const svgns = "http://www.w3.org/2000/svg";
+  function createEl(tag, attrs){
+    const el = document.createElementNS(svgns, tag);
+    for(const k in attrs) el.setAttribute(k, attrs[k]);
+    return el;
+  }
+
+  // Defs for glowing playhead & filters
+  const defs = createEl("defs", {});
+  defs.innerHTML = `
+    <filter id="playheadGlow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="3.5" result="coloredBlur"/>
+      <feMerge>
+        <feMergeNode in="coloredBlur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+    <filter id="badgeGlow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="2" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  `;
+  svg.appendChild(defs);
+
+  const flatTokens = flattenSong(currentSong);
+  const NOTE_SPACING = 58;
+  const START_X = 55;
+  const totalNotes = flatTokens.length;
+  const totalWidth = Math.max(860, START_X + totalNotes * NOTE_SPACING + 140);
+  svg.setAttribute("width", totalWidth);
+  svg.setAttribute("viewBox", `0 0 ${totalWidth} 226`);
+
+  // 6 Horizontal Guitar String Lines (e to E)
+  const stringsConfig = [
+    { si: 5, y: 47, width: 1.2, stroke: "#745b43" },
+    { si: 4, y: 73, width: 1.4, stroke: "#7e6248" },
+    { si: 3, y: 99, width: 1.6, stroke: "#8a6c4f" },
+    { si: 2, y: 125, width: 1.8, stroke: "#967556" },
+    { si: 1, y: 151, width: 2.1, stroke: "#a37f5d" },
+    { si: 0, y: 177, width: 2.5, stroke: "#b58e69" }
+  ];
+  stringsConfig.forEach(sc => {
+    svg.appendChild(createEl("line", {
+      x1: 0, y1: sc.y, x2: totalWidth, y2: sc.y,
+      stroke: sc.stroke, "stroke-width": sc.width, opacity: 0.95
+    }));
   });
+
+  // Render Bar Lines & Notes
+  let noteGlobalIdx = 0;
+  currentSong.lines.forEach((line, li) => {
+    const lineStartIdx = noteGlobalIdx;
+    line.forEach((tok, ti) => {
+      const x = START_X + noteGlobalIdx * NOTE_SPACING;
+      const y = TAB_STRING_Y[tok.string] || 99;
+      tabNotePositions.push({ x, y, tok, flatIdx: noteGlobalIdx });
+
+      // Measure Bar Line at start of phrase (except very beginning if 0)
+      if(ti === 0 && li > 0){
+        const barX = x - (NOTE_SPACING / 2);
+        svg.appendChild(createEl("line", {
+          x1: barX, y1: 36, x2: barX, y2: 188,
+          stroke: "#b8863b", "stroke-width": 2, opacity: 0.55
+        }));
+        const secLabel = currentSong.sections && currentSong.sections[li];
+        if(secLabel){
+          const secText = createEl("text", {
+            x: barX + 6, y: 18, "font-size": 10, "font-weight": 700,
+            fill: "#c9b98a", opacity: 0.8
+          });
+          secText.textContent = secLabel;
+          svg.appendChild(secText);
+        }
+      }
+
+      // Note Group Container
+      const g = createEl("g", {
+        class: "tab-note-group", "data-flat": noteGlobalIdx, cursor: "pointer"
+      });
+
+      // Syllable / Word Above String
+      const wordText = createEl("text", {
+        x, y: 22, "font-size": 11.5, "font-weight": 700,
+        fill: "#e5b95f", "text-anchor": "middle"
+      });
+      wordText.textContent = tok.word || tok.pitch;
+      g.appendChild(wordText);
+
+      // Pitch Name Below String
+      const pitchText = createEl("text", {
+        x, y: 205, "font-size": 10.5, "font-weight": 600,
+        fill: "#78a87b", "text-anchor": "middle"
+      });
+      pitchText.textContent = tok.pitch;
+      g.appendChild(pitchText);
+
+      // Note Badge (fret number directly on the string line)
+      const isSlide = tok.slide || (tok.word && (tok.word.includes("/") || tok.word.includes("\\") || tok.word.includes("-")));
+      const fretStr = String(tok.word || tok.fret);
+      const badgeId = `tabNoteBadge_${noteGlobalIdx}`;
+
+      if(isSlide || fretStr.length > 2){
+        const badgeWidth = Math.max(34, fretStr.length * 9 + 12);
+        const rect = createEl("rect", {
+          x: x - (badgeWidth / 2), y: y - 11, width: badgeWidth, height: 22, rx: 11,
+          id: badgeId, class: "tab-note-badge",
+          fill: "#22170f", stroke: "#c99342", "stroke-width": 1.8
+        });
+        g.appendChild(rect);
+      } else {
+        const circle = createEl("circle", {
+          cx: x, cy: y, r: 12.5,
+          id: badgeId, class: "tab-note-badge",
+          fill: "#22170f", stroke: "#c99342", "stroke-width": 1.8
+        });
+        g.appendChild(circle);
+      }
+
+      // Fret Number Text Inside Badge
+      const fretText = createEl("text", {
+        x, y: y + 4.5, "font-size": 12.5, "font-weight": 700,
+        fill: "#fff8ed", "text-anchor": "middle", class: "tab-fret-text", "pointer-events": "none"
+      });
+      fretText.textContent = tok.fret != null ? tok.fret : tok.pitch;
+      g.appendChild(fretText);
+
+      // Click to play this note
+      const currentFlat = noteGlobalIdx;
+      g.onclick = () => playNote(tok, null, currentFlat);
+
+      svg.appendChild(g);
+      noteGlobalIdx++;
+    });
+  });
+
+  // Animated Playhead Cursor
+  const playheadG = createEl("g", {
+    id: "tabPlayheadCursor",
+    transform: `translate(${START_X}, 0)`,
+    style: "transition: transform 0.08s linear;"
+  });
+  playheadG.innerHTML = `
+    <line x1="0" y1="8" x2="0" y2="216" stroke="#f59e0b" stroke-width="2.5" stroke-linecap="round" filter="url(#playheadGlow)"/>
+    <polygon points="-7,8 7,8 0,20" fill="#f59e0b"/>
+    <circle cx="0" cy="214" r="3.5" fill="#f59e0b"/>
+  `;
+  svg.appendChild(playheadG);
 }
+
+function updatePlayhead(flatIdx, smooth=true){
+  if(notationMode !== "tab") return;
+  const pos = tabNotePositions[flatIdx];
+  if(!pos) return;
+  const cursor = document.getElementById("tabPlayheadCursor");
+  if(cursor){
+    cursor.setAttribute("transform", `translate(${pos.x}, 0)`);
+    cursor.style.display = "block";
+  }
+  document.querySelectorAll(".tab-note-badge.active").forEach(el => el.classList.remove("active"));
+  document.querySelectorAll(".tab-note-group.active").forEach(el => el.classList.remove("active"));
+
+  const activeBadge = document.getElementById(`tabNoteBadge_${flatIdx}`);
+  if(activeBadge) activeBadge.classList.add("active");
+  const activeGroup = document.querySelector(`.tab-note-group[data-flat="${flatIdx}"]`);
+  if(activeGroup) activeGroup.classList.add("active");
+
+  const wrap = document.getElementById("tabTrackScroll");
+  if(wrap && autoScrollEnabled){
+    const targetScroll = pos.x - wrap.clientWidth * 0.35;
+    if(smooth){
+      wrap.scrollTo({ left: Math.max(0, targetScroll), behavior: "smooth" });
+    } else {
+      wrap.scrollLeft = Math.max(0, targetScroll);
+    }
+  }
+}
+
 function renderLyrics(){
   lyricsArea.className = notationMode==="chords"?"chordsmode":"";
   lyricsArea.innerHTML="";
@@ -847,19 +1259,46 @@ function renderLyrics(){
         <div class="pitch" style="font-size:.75rem;font-weight:700;color:var(--string-2);margin-top:2px">${tok.pitch}</div>
         <div class="tabpos" style="font-size:.7rem">${fretLabel(tok)}</div>
       `;
-      col.onclick=()=>playNote(tok,col);
+      col.onclick=()=>playNote(tok,col,col.dataset.flat);
       row.appendChild(col);
     });
     lyricsArea.appendChild(row);
   });
 }
+
 function renderNotation(){ notationMode==="tab" ? renderTabView() : renderLyrics(); }
-function playNote(tok,col){
+
+function playNote(tok, col, flatIdx){
   document.querySelectorAll(".note-col.active").forEach(e=>e.classList.remove("active"));
   if(col) col.classList.add("active");
-  if(col && col.dataset.flat!=null) lastPlayedFlatIdx=+col.dataset.flat;
-  highlightFret(tok.string,tok.fret);
-  pluck(freqFor(tok.pitch,tok.string,tok.fret));
+  if(flatIdx != null){
+    lastPlayedFlatIdx = +flatIdx;
+    updatePlayhead(lastPlayedFlatIdx, true);
+  } else if(col && col.dataset.flat != null){
+    lastPlayedFlatIdx = +col.dataset.flat;
+    updatePlayhead(lastPlayedFlatIdx, true);
+  }
+  highlightFret(tok.string, tok.fret);
+
+  // Realistic Acoustic Guitar Slide Articulation
+  if(tok.slide && tok.slide.includes("/")){
+    const p = tok.slide.split("/");
+    const f1 = parseInt(p[0]), f2 = parseInt(p[1]);
+    if(!isNaN(f1) && !isNaN(f2)){
+      pluck(freqFor(tok.pitch, tok.string, f1), 0.15);
+      setTimeout(() => pluck(freqFor(tok.pitch, tok.string, f2), 1.0), 90);
+      return;
+    }
+  } else if(tok.slide && tok.slide.includes("\\")){
+    const p = tok.slide.split("\\");
+    const f1 = parseInt(p[0]), f2 = parseInt(p[1]);
+    if(!isNaN(f1) && !isNaN(f2)){
+      pluck(freqFor(tok.pitch, tok.string, f1), 0.15);
+      setTimeout(() => pluck(freqFor(tok.pitch, tok.string, f2), 1.0), 90);
+      return;
+    }
+  }
+  pluck(freqFor(tok.pitch, tok.string, tok.fret));
 }
 
 // fretboard — real vector neck: nut, fret wires, inlay dots, tapered strings
@@ -918,23 +1357,54 @@ async function playSequence(startIdx,endIdx){
     for(let i=startIdx;i<=endIdx && !stopRequested;i++){
       const tok=flat[i];
       const col=lyricsArea.querySelector(`.note-col[data-flat="${i}"]`);
-      playNote(tok,col);
-      await new Promise(r=>setTimeout(r,beat*1000*0.9));
+      playNote(tok,col,i);
+      await new Promise(r=>setTimeout(r,beat*1000*0.92));
     }
   } while(loopActive && !stopRequested && !(realAudio.src && realAudio.style.display!=="none"));
   playing=false;
 }
+
 document.getElementById("playBtn").onclick=()=>{
   if(playing) return;
   playing=true; stopRequested=false;
   const usingRealAudio = realAudio.src && realAudio.style.display!=="none";
-  if(usingRealAudio){ realAudio.play(); playing=false; }
-  else{ const s=loopActive && synthLoopA!=null ? synthLoopA:0; const e=loopActive && synthLoopB!=null ? synthLoopB:null; playSequence(s,e); }
+  if(usingRealAudio){
+    realAudio.play().then(() => { playing=true; }).catch(err => {
+      console.warn("Audio playback fallback to synth:", err);
+      const s=loopActive && synthLoopA!=null ? synthLoopA:0;
+      const e=loopActive && synthLoopB!=null ? synthLoopB:null;
+      playSequence(s,e);
+    });
+  } else {
+    const s=loopActive && synthLoopA!=null ? synthLoopA:0;
+    const e=loopActive && synthLoopB!=null ? synthLoopB:null;
+    playSequence(s,e);
+  }
 };
-document.getElementById("stopBtn").onclick=()=>{ stopRequested=true; playing=false; if(realAudio.src) realAudio.pause(); };
 
-document.getElementById("notationMode").onchange=e=>{ notationMode=e.target.value; renderNotation(); };
+document.getElementById("stopBtn").onclick=()=>{
+  stopRequested=true;
+  playing=false;
+  if(realAudio.src) realAudio.pause();
+  document.querySelectorAll(".tab-note-badge.active").forEach(el=>el.classList.remove("active"));
+  document.querySelectorAll(".tab-note-group.active").forEach(el=>el.classList.remove("active"));
+  document.querySelectorAll(".note-col.active").forEach(e=>e.classList.remove("active"));
+};
+
+document.getElementById("speedSel").onchange=()=>{
+  if(realAudio.src) realAudio.playbackRate=parseFloat(document.getElementById("speedSel").value);
+};
+
+document.getElementById("notationMode").onchange=e=>{
+  notationMode=e.target.value;
+  renderNotation();
+};
+
 songSel.onchange = async e => {
+  stopRequested = true;
+  playing = false;
+  if(realAudio.src) realAudio.pause();
+
   const selected = songs[+e.target.value];
   if(selected && selected.isLazy && selected.id){
     const status = document.getElementById("apiStatus");
@@ -947,7 +1417,7 @@ songSel.onchange = async e => {
         parsed.id = selected.id;
         songs[+e.target.value] = parsed;
         currentSong = parsed;
-        realAudio.src = API_BASE_URL + `/audio/${selected.id}`;
+        realAudio.src = API_BASE_URL + `/guitar-audio/${selected.id}`;
         realAudio.style.display = "block";
         wireAudioSync(parsed);
         status.textContent = "Loaded from Google Drive / Storage! Tap Play to practice.";
@@ -957,7 +1427,10 @@ songSel.onchange = async e => {
     }
   } else {
     currentSong = selected;
+    realAudio.style.display = "none";
+    realAudio.src = "";
   }
+  ensureTimings(currentSong);
   buildFret(currentSong);
   renderMeta();
   renderChords();
