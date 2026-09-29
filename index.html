@@ -90,7 +90,7 @@ footer{text-align:center;font-size:.72rem;opacity:.5;margin-top:30px}
 .tab-viewport {
   display: flex;
   position: relative;
-  height: 226px;
+  height: 252px;
   background: #140f0a;
 }
 .tab-gutter {
@@ -127,7 +127,7 @@ footer{text-align:center;font-size:.72rem;opacity:.5;margin-top:30px}
 .tab-svg-board {
   display: block;
   min-width: 100%;
-  height: 226px;
+  height: 252px;
 }
 .tab-note-badge {
   transition: all 0.12s ease-out;
@@ -435,14 +435,11 @@ function ctx(){
   if(actx.state==="suspended") actx.resume();
   return actx;
 }
+const STRING_OPEN_FREQS = [82.4069, 110.0000, 146.8324, 195.9977, 246.9417, 329.6276];
 function freqFor(pitchName, si, fret){
-  if(si == null || si < 0 || si >= STRINGS.length) si = 3;
-  if(fret == null || isNaN(fret)) fret = 0;
-  const openPc = noteIndex(STRINGS[si].name);
-  const openOct = STRINGS[si].oct;
-  const openMidi = openOct*12+openPc;
-  const midi = openMidi+fret;
-  return 440*Math.pow(2,(midi-57)/12);
+  const s = (si != null && si >= 0 && si < 6) ? si : 3;
+  const f = (fret != null && !isNaN(fret)) ? fret : 0;
+  return STRING_OPEN_FREQS[s] * Math.pow(2, f / 12);
 }
 let masterLimiter = null;
 function getMasterOutput(c){
@@ -485,72 +482,96 @@ function getReverbNode(c){
   }
 }
 
+let acousticGuitarWave = null;
+function getAcousticGuitarWave(c){
+  if(acousticGuitarWave) return acousticGuitarWave;
+  const nHarmonics = 16;
+  const real = new Float32Array(nHarmonics);
+  const imag = new Float32Array(nHarmonics);
+  real[0] = 0; imag[0] = 0;
+  // Natural acoustic nylon/steel string harmonic amplitudes:
+  const weights = [0, 1.0, 0.72, 0.52, 0.35, 0.22, 0.15, 0.09, 0.06, 0.04, 0.03, 0.02, 0.015, 0.01, 0.007, 0.005];
+  for(let i=1; i<nHarmonics; i++){
+    imag[i] = weights[i];
+  }
+  acousticGuitarWave = c.createPeriodicWave(real, imag, { disableNormalization: false });
+  return acousticGuitarWave;
+}
+
 function pluck(freq, dur=1.6, time=0, isBass=false, vol=0.85){
   const c=ctx();
   if(!c || !freq || freq <= 0 || isNaN(freq)) return;
   if(c.state === "suspended") c.resume();
   const t0 = c.currentTime + Math.max(0.005, time);
-  const sr = c.sampleRate;
-  const period = Math.max(2, Math.round(sr / freq));
-  const actualDur = Math.max(1.1, Math.min(3.5, dur));
-  const nSamples = Math.floor(sr * actualDur);
-  const buf = c.createBuffer(1, nSamples, sr);
-  const d = buf.getChannelData(0);
+  const actualDur = Math.max(0.75, Math.min(3.2, dur));
 
-  // Shaped plectrum/finger displacement at ~22% along the string (or 32% for thumb bass)
-  const pickPos = Math.max(1, Math.round(period * (isBass ? 0.32 : 0.22)));
-  for(let i=0; i<period; i++){
-    const tri = i < pickPos ? (i / pickPos) : ((period - i) / Math.max(1, period - pickPos));
-    const noise = (Math.random() * 2 - 1) * (isBass ? 0.22 : 0.35);
-    d[i] = (tri * (isBass ? 0.80 : 0.70) + noise) * 0.85;
+  // 1. Oscillator with rich acoustic guitar harmonic profile
+  const osc = c.createOscillator();
+  osc.setPeriodicWave(getAcousticGuitarWave(c));
+  osc.frequency.setValueAtTime(freq, t0);
+
+  // 2. Pick attack noise transient (the natural fingernail/pick snap)
+  const pickDur = 0.012;
+  const nPickSamples = Math.floor(c.sampleRate * pickDur);
+  const pickBuf = c.createBuffer(1, nPickSamples, c.sampleRate);
+  const pickData = pickBuf.getChannelData(0);
+  for(let i=0; i<nPickSamples; i++){
+    pickData[i] = (Math.random() * 2 - 1) * Math.exp(-i / (nPickSamples * 0.25));
   }
+  const pickSrc = c.createBufferSource();
+  pickSrc.buffer = pickBuf;
+  const pickGain = c.createGain();
+  pickGain.gain.setValueAtTime(isBass ? 0.06 : 0.12, t0);
+  pickGain.gain.exponentialRampToValueAtTime(0.0001, t0 + pickDur);
+  pickSrc.connect(pickGain);
 
-  // Realistic acoustic lead decay (warm bass sustain, singing treble ring)
-  const decay = isBass ? 0.9965 : Math.min(0.9965, 0.991 + 0.0055 * (200.0 / Math.max(120.0, freq)));
-  for(let i=period; i<nSamples; i++){
-    const prev = (i - period - 1 >= 0) ? d[i - period - 1] : d[period - 1];
-    d[i] = 0.5 * (d[i - period] + prev) * decay;
-  }
+  // 3. Dynamic lowpass damping: acoustic string starts bright, high frequencies damp out first
+  const dampingFilter = c.createBiquadFilter();
+  dampingFilter.type = "lowpass";
+  const startCutoff = isBass ? 1200 : Math.min(6500, freq * 7.5);
+  const endCutoff = isBass ? 280 : Math.max(380, freq * 1.6);
+  dampingFilter.frequency.setValueAtTime(startCutoff, t0);
+  dampingFilter.frequency.exponentialRampToValueAtTime(endCutoff, t0 + actualDur * 0.7);
 
-  const src = c.createBufferSource();
-  src.buffer = buf;
+  // 4. Acoustic Guitar Body & Soundboard Resonance Filters
+  // Helmholtz air cavity resonance (~105Hz)
+  const airCavity = c.createBiquadFilter();
+  airCavity.type = "peaking";
+  airCavity.frequency.value = isBass ? 98 : 108;
+  airCavity.Q.value = 3.5;
+  airCavity.gain.value = isBass ? 5.5 : 3.5;
 
-  // Dynamic lowpass filter: bright attack rapidly settling into fundamental
-  const filt = c.createBiquadFilter();
-  filt.type = "lowpass";
-  if(isBass){
-    filt.frequency.setValueAtTime(1400, t0);
-    filt.frequency.exponentialRampToValueAtTime(320, t0 + actualDur);
-  } else {
-    filt.frequency.setValueAtTime(Math.min(5000, freq * 7), t0);
-    filt.frequency.exponentialRampToValueAtTime(Math.max(450, freq * 1.5), t0 + actualDur);
-  }
+  // Soundboard wood top-plate resonance (~215Hz)
+  const woodPlate = c.createBiquadFilter();
+  woodPlate.type = "peaking";
+  woodPlate.frequency.value = isBass ? 190 : 218;
+  woodPlate.Q.value = 2.8;
+  woodPlate.gain.value = 4.0;
 
-  // Acoustic guitar soundboard & air cavity resonance
-  const bodyRes = c.createBiquadFilter();
-  bodyRes.type = "peaking";
-  bodyRes.frequency.value = isBass ? 95 : 110;
-  bodyRes.Q.value = 3.0;
-  bodyRes.gain.value = isBass ? 6.0 : 4.0;
+  // 5. Amplitude envelope (fast natural pick attack, singing sustain, smooth musical release)
+  const ampGain = c.createGain();
+  const effVol = isBass ? (vol * 0.40) : (vol * 0.88);
+  ampGain.gain.setValueAtTime(0.0001, t0);
+  ampGain.gain.linearRampToValueAtTime(effVol, t0 + 0.008);
+  ampGain.gain.exponentialRampToValueAtTime(effVol * 0.45, t0 + actualDur * 0.35);
+  ampGain.gain.exponentialRampToValueAtTime(0.0001, t0 + actualDur);
 
-  const topRes = c.createBiquadFilter();
-  topRes.type = "peaking";
-  topRes.frequency.value = isBass ? 180 : 215;
-  topRes.Q.value = 2.5;
-  topRes.gain.value = 3.5;
+  // Connect graph
+  osc.connect(dampingFilter);
+  dampingFilter.connect(airCavity);
+  airCavity.connect(woodPlate);
+  woodPlate.connect(ampGain);
+  pickGain.connect(woodPlate);
 
-  const gain = c.createGain();
-  const effVol = isBass ? (vol * 0.42) : (vol * 0.82);
-  gain.gain.setValueAtTime(0.0001, t0);
-  gain.gain.linearRampToValueAtTime(effVol, t0 + 0.005);
-  gain.gain.exponentialRampToValueAtTime(0.0001, t0 + actualDur);
+  const out = getMasterOutput(c);
+  ampGain.connect(out);
 
-  src.connect(filt).connect(bodyRes).connect(topRes).connect(gain);
-  gain.connect(getMasterOutput(c));
   const rev = getReverbNode(c);
-  if(rev) gain.connect(rev);
+  if(rev) ampGain.connect(rev);
 
-  src.start(t0);
+  osc.start(t0);
+  osc.stop(t0 + actualDur);
+  pickSrc.start(t0);
 }
 
 // ---------- Real chord diagrams (replaces placeholder alert) ----------
@@ -946,15 +967,15 @@ const ishqOhPriyaPriyaSong = {
   strum: "Acoustic Solo Tabs in Tune with Song (10th-15th Fret Lead Box)",
   chords: ["Cm", "Bb", "Ab", "Gm"],
   sections: [
-    "Chorus 1: Oh Priya Priya... (High e: 11-13-15-11)",
-    "Chorus 2: Oh my dear Priya... (B: 11-13-11, High e: 10-8-10-11)",
-    "Chorus 3: Oh Priya Priya... (High e: 11-13-15-11)",
-    "Chorus 4: Oh my dear Priya... (B: 11-13-11, High e: 10-8-10-11)",
-    "Stanza 1: Nee premalo manase... (High e: 11-10-11-13-11-10-8)",
-    "Stanza 2: Munigindevela... (High e: 11-10-11-13-11-10)",
-    "Stanza 3: Telusa neekaina... (High e: 11-13-11-10-10-11)",
-    "Stanza 4: Ontari oohallo... (High e: 10-10-10-8-8)",
-    "Stanza 5: Voopirilo nuvvele Priya... (High e: 11-11-10-8)"
+    "Chorus 1",
+    "Chorus 2",
+    "Chorus 3",
+    "Chorus 4",
+    "Stanza 1",
+    "Stanza 2",
+    "Stanza 3",
+    "Stanza 4",
+    "Stanza 5"
   ],
   lines: [
     // --- CHORUS 1: "Oh Priya Priya..." ---
@@ -3294,7 +3315,8 @@ function fretLabel(tok){
 function flattenSong(song){ const flat=[]; song.lines.forEach(l=>l.forEach(t=>flat.push(t))); return flat; }
 
 // Animated 6-Line Tab Staff Data & Coordinates
-const TAB_STRING_Y = { 5: 47, 4: 73, 3: 99, 2: 125, 1: 151, 0: 177 };
+// Height: 252px total. Header area: 49px. 6 strings: 62, 88, 114, 140, 166, 192. Bottom pitch: 224.
+const TAB_STRING_Y = { 5: 62, 4: 88, 3: 114, 2: 140, 1: 166, 0: 192 };
 let tabNotePositions = [];
 
 function renderTabView(){
@@ -3315,14 +3337,14 @@ function renderTabView(){
       </div>
       <div class="tab-viewport">
         <div class="tab-gutter">
-          <div style="height:34px"></div>
+          <div style="height:49px"></div>
           <div class="tab-gutter-label">e</div>
           <div class="tab-gutter-label">B</div>
           <div class="tab-gutter-label">G</div>
           <div class="tab-gutter-label">D</div>
           <div class="tab-gutter-label">A</div>
           <div class="tab-gutter-label">E</div>
-          <div style="height:32px"></div>
+          <div style="height:47px"></div>
         </div>
         <div class="tab-track-container" id="tabTrackScroll">
           <svg id="tabSvgBoard" class="tab-svg-board"></svg>
@@ -3352,7 +3374,7 @@ function renderTabView(){
   const defs = createEl("defs", {});
   defs.innerHTML = `
     <filter id="playheadGlow" x="-50%" y="-50%" width="200%" height="200%">
-      <feGaussianBlur stdDeviation="3.5" result="coloredBlur"/>
+      <feGaussianBlur stdDeviation="3" result="coloredBlur"/>
       <feMerge>
         <feMergeNode in="coloredBlur"/>
         <feMergeNode in="SourceGraphic"/>
@@ -3369,21 +3391,21 @@ function renderTabView(){
   svg.appendChild(defs);
 
   const flatTokens = flattenSong(currentSong);
-  const NOTE_SPACING = 58;
-  const START_X = 55;
+  const NOTE_SPACING = 76;
+  const START_X = 64;
   const totalNotes = flatTokens.length;
-  const totalWidth = Math.max(860, START_X + totalNotes * NOTE_SPACING + 140);
+  const totalWidth = Math.max(880, START_X + totalNotes * NOTE_SPACING + 160);
   svg.setAttribute("width", totalWidth);
-  svg.setAttribute("viewBox", `0 0 ${totalWidth} 226`);
+  svg.setAttribute("viewBox", `0 0 ${totalWidth} 252`);
 
   // 6 Horizontal Guitar String Lines (e to E)
   const stringsConfig = [
-    { si: 5, y: 47, width: 1.2, stroke: "#745b43" },
-    { si: 4, y: 73, width: 1.4, stroke: "#7e6248" },
-    { si: 3, y: 99, width: 1.6, stroke: "#8a6c4f" },
-    { si: 2, y: 125, width: 1.8, stroke: "#967556" },
-    { si: 1, y: 151, width: 2.1, stroke: "#a37f5d" },
-    { si: 0, y: 177, width: 2.5, stroke: "#b58e69" }
+    { si: 5, y: 62, width: 1.2, stroke: "#745b43" },
+    { si: 4, y: 88, width: 1.4, stroke: "#7e6248" },
+    { si: 3, y: 114, width: 1.6, stroke: "#8a6c4f" },
+    { si: 2, y: 140, width: 1.8, stroke: "#967556" },
+    { si: 1, y: 166, width: 2.1, stroke: "#a37f5d" },
+    { si: 0, y: 192, width: 2.5, stroke: "#b58e69" }
   ];
   stringsConfig.forEach(sc => {
     svg.appendChild(createEl("line", {
@@ -3395,26 +3417,32 @@ function renderTabView(){
   // Render Bar Lines & Notes
   let noteGlobalIdx = 0;
   currentSong.lines.forEach((line, li) => {
-    const lineStartIdx = noteGlobalIdx;
     line.forEach((tok, ti) => {
       const x = START_X + noteGlobalIdx * NOTE_SPACING;
-      const y = TAB_STRING_Y[tok.string] || 99;
+      const y = TAB_STRING_Y[tok.string] || 114;
       tabNotePositions.push({ x, y, tok, flatIdx: noteGlobalIdx });
 
       // Measure Bar Line at start of phrase (except very beginning if 0)
       if(ti === 0 && li > 0){
         const barX = x - (NOTE_SPACING / 2);
         svg.appendChild(createEl("line", {
-          x1: barX, y1: 36, x2: barX, y2: 188,
-          stroke: "#b8863b", "stroke-width": 2, opacity: 0.55
+          x1: barX, y1: 32, x2: barX, y2: 206,
+          stroke: "#b8863b", "stroke-width": 1.8, opacity: 0.6
         }));
-        const secLabel = currentSong.sections && currentSong.sections[li];
-        if(secLabel){
-          const secText = createEl("text", {
-            x: barX + 6, y: 18, "font-size": 10, "font-weight": 700,
-            fill: "#c9b98a", opacity: 0.8
+        const rawLabel = currentSong.sections && currentSong.sections[li];
+        if(rawLabel){
+          const cleanSec = rawLabel.split(":")[0].split("(")[0].trim().toUpperCase();
+          const badgeW = Math.max(58, cleanSec.length * 7.5 + 16);
+          const pill = createEl("rect", {
+            x: barX - (badgeW / 2), y: 6, width: badgeW, height: 18, rx: 9,
+            fill: "#24180f", stroke: "#c99342", "stroke-width": 1.2
           });
-          secText.textContent = secLabel;
+          svg.appendChild(pill);
+          const secText = createEl("text", {
+            x: barX, y: 19, "font-size": 9.5, "font-weight": 700,
+            fill: "#e5b95f", "text-anchor": "middle", "letter-spacing": "0.03em"
+          });
+          secText.textContent = cleanSec;
           svg.appendChild(secText);
         }
       }
@@ -3424,19 +3452,19 @@ function renderTabView(){
         class: "tab-note-group", "data-flat": noteGlobalIdx, cursor: "pointer"
       });
 
-      // Syllable / Word Above String
+      // Syllable / Word Above String (at y: 44, safely below y: 6-25 section pill)
       const wordText = createEl("text", {
-        x, y: 22, "font-size": 11.5, "font-weight": 700,
+        x, y: 44, "font-size": 12, "font-weight": 700,
         class: "tab-note-word",
-        fill: "#e5b95f", "text-anchor": "middle"
+        fill: "#f8e2a6", "text-anchor": "middle"
       });
       wordText.textContent = tok.word || tok.pitch;
       g.appendChild(wordText);
 
-      // Pitch Name Below String
+      // Pitch Name Below String (at y: 224, below low E string at 192)
       const pitchText = createEl("text", {
-        x, y: 205, "font-size": 10.5, "font-weight": 600,
-        fill: "#78a87b", "text-anchor": "middle"
+        x, y: 224, "font-size": 11, "font-weight": 600,
+        fill: "#86b889", "text-anchor": "middle"
       });
       pitchText.textContent = tok.pitch;
       g.appendChild(pitchText);
@@ -3456,7 +3484,7 @@ function renderTabView(){
         g.appendChild(rect);
       } else {
         const circle = createEl("circle", {
-          cx: x, cy: y, r: 12.5,
+          cx: x, cy: y, r: 13,
           id: badgeId, class: "tab-note-badge",
           fill: "#22170f", stroke: "#c99342", "stroke-width": 1.8
         });
@@ -3487,9 +3515,10 @@ function renderTabView(){
     style: "transition: transform 0.08s linear;"
   });
   playheadG.innerHTML = `
-    <line x1="0" y1="8" x2="0" y2="216" stroke="#f59e0b" stroke-width="2.5" stroke-linecap="round" filter="url(#playheadGlow)"/>
-    <polygon points="-7,8 7,8 0,20" fill="#f59e0b"/>
-    <circle cx="0" cy="214" r="3.5" fill="#f59e0b"/>
+    <line x1="0" y1="28" x2="0" y2="238" stroke="#f59e0b" stroke-width="2.5" stroke-linecap="round" filter="url(#playheadGlow)"/>
+    <circle cx="0" cy="30" r="4.5" fill="#f59e0b"/>
+    <circle cx="0" cy="30" r="2" fill="#fff"/>
+    <circle cx="0" cy="236" r="3.5" fill="#f59e0b"/>
   `;
   svg.appendChild(playheadG);
 }
@@ -3734,16 +3763,37 @@ async function playSequence(startIdx,endIdx){
   playing=false;
 }
 
+function updatePlayBtnUI(isPlaying){
+  const btn = document.getElementById("playBtn");
+  if(!btn) return;
+  if(isPlaying){
+    btn.innerHTML = "⏸ Pause";
+    btn.style.background = "#c99342";
+    btn.style.color = "#1b130c";
+  } else {
+    btn.innerHTML = "▶ Play";
+    btn.style.background = "";
+    btn.style.color = "";
+  }
+}
+
 document.getElementById("playBtn").onclick=async ()=>{
   const c = ctx();
   if(c && c.state === "suspended"){
     try { await c.resume(); } catch(e){}
   }
-  if(playing) return;
+  if(playing){
+    stopRequested = true;
+    playing = false;
+    updatePlayBtnUI(false);
+    if(realAudio.src) realAudio.pause();
+    return;
+  }
   playing=true; stopRequested=false;
+  updatePlayBtnUI(true);
   const usingRealAudio = realAudio.src && realAudio.style.display!=="none" && !realAudio.error;
   if(usingRealAudio){
-    realAudio.play().then(() => { playing=true; }).catch(err => {
+    realAudio.play().then(() => { updatePlayBtnUI(true); }).catch(err => {
       console.warn("Audio playback fallback to synth:", err);
       const s=loopActive && synthLoopA!=null ? synthLoopA:0;
       const e=loopActive && synthLoopB!=null ? synthLoopB:null;
@@ -3759,7 +3809,11 @@ document.getElementById("playBtn").onclick=async ()=>{
 document.getElementById("stopBtn").onclick=()=>{
   stopRequested=true;
   playing=false;
-  if(realAudio.src) realAudio.pause();
+  updatePlayBtnUI(false);
+  if(realAudio.src){
+    realAudio.pause();
+    realAudio.currentTime = 0;
+  }
   document.querySelectorAll(".tab-note-badge.active").forEach(el=>el.classList.remove("active"));
   document.querySelectorAll(".tab-note-group.active").forEach(el=>el.classList.remove("active"));
   document.querySelectorAll(".note-col.active").forEach(e=>e.classList.remove("active"));
