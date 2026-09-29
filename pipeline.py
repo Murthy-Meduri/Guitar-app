@@ -575,45 +575,22 @@ def synthesize_guitar_audio(notes: List[dict], total_duration: float, out_wav_pa
             buf[i] = 0.5 * (buf[i - delay] + prev) * decay
         return buf
 
-    # 1. Continuous Acoustic Guitar Rhythm Accompaniment (Thumb Bass + Arpeggio Chimes in Tempo)
-    t_meas = 0.0
-    meas_idx = 0
-    end_time = max(total_duration, float(notes[-1].get("end", 0.0)) if notes else 0.0)
-    while t_meas < end_time + 1.5:
-        ch = active_chords[meas_idx % len(active_chords)].replace("[", "").replace("]", "").strip()
-        b_root = CHORD_BASS_MAP.get(ch, 110.0)
-        mids = CHORD_MID_MAP.get(ch, [196.0, 246.9, 329.6])
-
-        # Beat 1: Warm resonant thumb bass root
-        s1 = int(t_meas * sr)
-        if s1 < total_samples:
-            buf1 = make_ks(b_root, beat_dur * 1.8, is_bass=True, pick_ratio=0.35, decay_val=0.9965)
-            n_write = min(len(buf1), total_samples - s1)
-            track[s1:s1 + n_write] += buf1[:n_write] * 0.38
-
-        # Beat 2: Light acoustic chord inner chime
-        s2 = int((t_meas + beat_dur) * sr)
-        if s2 < total_samples:
-            buf2 = make_ks(mids[1], beat_dur * 0.9, is_bass=False, pick_ratio=0.22, decay_val=0.992)
-            n_write = min(len(buf2), total_samples - s2)
-            track[s2:s2 + n_write] += buf2[:n_write] * 0.22
-
-        # Beat 3: Alternate bass (5th degree or octave)
-        s3 = int((t_meas + 2 * beat_dur) * sr)
-        if s3 < total_samples:
-            buf3 = make_ks(b_root * 1.5, beat_dur * 1.5, is_bass=True, pick_ratio=0.30, decay_val=0.995)
-            n_write = min(len(buf3), total_samples - s3)
-            track[s3:s3 + n_write] += buf3[:n_write] * 0.28
-
-        # Beat 4: Acoustic chord upstroke brush
-        s4 = int((t_meas + 3 * beat_dur) * sr)
-        if s4 < total_samples:
-            buf4 = make_ks(mids[2], beat_dur * 0.85, is_bass=False, pick_ratio=0.20, decay_val=0.991)
-            n_write = min(len(buf4), total_samples - s4)
-            track[s4:s4 + n_write] += buf4[:n_write] * 0.20
-
-        t_meas += 4 * beat_dur
-        meas_idx += 1
+    # 1. Fingerstyle Solo Guitar Downbeat Bass Plucks
+    # Plucks thumb bass root only at musical downbeats / chord transitions
+    last_bass_time = -999.0
+    for n in notes:
+        st = float(n.get("start", 0.0))
+        ch = n.get("chord")
+        # Trigger thumb bass on chord changes or after phrase pauses (>1.2s)
+        if ch or (st - last_bass_time >= (4.0 * beat_dur * 0.95)):
+            chord_name = (ch or active_chords[int(st / (4.0 * beat_dur)) % len(active_chords)]).replace("[", "").replace("]", "").strip()
+            b_root = CHORD_BASS_MAP.get(chord_name, 110.0)
+            start_samp = int(st * sr)
+            if start_samp < total_samples:
+                buf_b = make_ks(b_root, beat_dur * 2.2, is_bass=True, pick_ratio=0.35, decay_val=0.9965)
+                n_b = min(len(buf_b), total_samples - start_samp)
+                track[start_samp:start_samp + n_b] += buf_b[:n_b] * 0.40
+                last_bass_time = st
 
     # 2. Solo Lead Melody Guitar Plucks (Singing notes)
     for n in notes:
