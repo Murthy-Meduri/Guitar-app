@@ -473,6 +473,7 @@ document.getElementById("fetchBtn").onclick=async ()=>{
   if(!API_BASE_URL){ status.textContent="No backend configured — set API_BASE_URL at the top of the script to your deployed /backend service. Showing offline demo below."; return; }
 
   let job_id = null;
+  let data = null;
   const videoId = extractVideoId(q);
 
   try{
