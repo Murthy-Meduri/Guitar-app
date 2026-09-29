@@ -141,6 +141,7 @@ def _run_job(job_id: str, query: str, language: str | None):
     job_dir = os.path.join(JOBS_DIR, job_id)
     os.makedirs(job_dir, exist_ok=True)
     try:
+        persisted_audio = os.path.join(job_dir, "audio.wav")
         guitar_audio = os.path.join(job_dir, "guitar.wav")
         result = process_song(query, language=language, target_audio_path=persisted_audio, target_guitar_path=guitar_audio)
         title = query.split("/")[-1].split("?")[0] if "http" in query else query

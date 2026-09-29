@@ -2630,17 +2630,601 @@ const DEMO_PITCH=[
   ["C#","B","A","B","C#"],
   ["D","E","F#","E","D"]
 ];
-const demoSong = {
-  title: "🎶 Le Padha Padhaa — Bollywood Lead",
-  key: "D Major",
-  bpm: 100,
-  strum: "D - DU - UDU",
-  chords: ["D","G","A","Bm"],
-  lines: DEMO_LYRICS.map((words,li)=>words.map((w,wi)=>({word:w,pitch:DEMO_PITCH[li][wi]}))),
-  sections: ["Verse","Verse","Chorus"]
+const lePadhaPadhaaSong = {
+  "id": "6c294ac8-92c8-4b49-acf4-394c0ca94717",
+  "guitar_audio_url": "/guitar-audio/6c294ac8-92c8-4b49-acf4-394c0ca94717",
+  "orig_audio_url": "/guitar-audio/6c294ac8-92c8-4b49-acf4-394c0ca94717",
+  "title": "\ud83c\udfb8 Le Padha Padhaa (M.S. Dhoni - Telugu) \u2014 Armaan Malik (Solo Acoustic Lead)",
+  "key": "D Major",
+  "bpm": 82,
+  "strum": "Acoustic Solo Tabs in Tune with Song (D - Bm - G - A)",
+  "chords": [
+    "D",
+    "Bm",
+    "G",
+    "A"
+  ],
+  "sections": [
+    "Signature Intro Riff 1",
+    "Signature Intro Riff 2",
+    "Intro Resolution",
+    "Verse 1: Kshanamaina aagaka...",
+    "Verse 1: Le padha padhaa...",
+    "Verse 2: Cheruko nee kalala...",
+    "Verse 2: Teeramai...",
+    "Chorus 1: Le padha padhaa...",
+    "Chorus 2: Payaname aagaka...",
+    "Chorus 3: Gelupune koruko nesthamaa..."
+  ],
+  "lines": [
+    [
+      {
+        "word": "F#",
+        "pitch": "F#4",
+        "string": 5,
+        "fret": 2,
+        "chord": "D",
+        "start": 0.1,
+        "end": 0.5,
+        "desc": "2nd fret high e (Signature picking intro with D root)"
+      },
+      {
+        "word": "D",
+        "pitch": "D4",
+        "string": 4,
+        "fret": 3,
+        "start": 0.55,
+        "end": 0.9,
+        "desc": "3rd fret B string"
+      },
+      {
+        "word": "E",
+        "pitch": "E4",
+        "string": 5,
+        "fret": 0,
+        "start": 0.95,
+        "end": 1.35,
+        "desc": "Open high e string"
+      },
+      {
+        "word": "A",
+        "pitch": "A4",
+        "string": 5,
+        "fret": 5,
+        "chord": "A",
+        "start": 1.4,
+        "end": 2.2,
+        "desc": "5th fret high e with A bass"
+      },
+      {
+        "word": "F#",
+        "pitch": "F#4",
+        "string": 5,
+        "fret": 2,
+        "chord": "D",
+        "start": 3.0,
+        "end": 3.4,
+        "desc": "2nd fret high e"
+      },
+      {
+        "word": "D",
+        "pitch": "D4",
+        "string": 4,
+        "fret": 3,
+        "start": 3.42,
+        "end": 3.75,
+        "desc": "3rd fret B string"
+      },
+      {
+        "word": "E",
+        "pitch": "E4",
+        "string": 5,
+        "fret": 0,
+        "start": 3.77,
+        "end": 4.15,
+        "desc": "Open high e string"
+      }
+    ],
+    [
+      {
+        "word": "A",
+        "pitch": "A4",
+        "string": 5,
+        "fret": 5,
+        "chord": "A",
+        "start": 4.18,
+        "end": 5.2,
+        "desc": "5th fret high e"
+      },
+      {
+        "word": "F#",
+        "pitch": "F#4",
+        "string": 5,
+        "fret": 2,
+        "chord": "D",
+        "start": 5.9,
+        "end": 6.3,
+        "desc": "2nd fret high e"
+      },
+      {
+        "word": "D",
+        "pitch": "D4",
+        "string": 4,
+        "fret": 3,
+        "start": 6.35,
+        "end": 6.7,
+        "desc": "3rd fret B string"
+      },
+      {
+        "word": "E",
+        "pitch": "E4",
+        "string": 5,
+        "fret": 0,
+        "start": 6.72,
+        "end": 7.1,
+        "desc": "Open high e string"
+      },
+      {
+        "word": "A",
+        "pitch": "A3",
+        "string": 1,
+        "fret": 0,
+        "chord": "D",
+        "start": 7.15,
+        "end": 8.5,
+        "desc": "Open A string with sustained D chord"
+      }
+    ],
+    [
+      {
+        "word": "Ksha-",
+        "pitch": "C#4",
+        "string": 4,
+        "fret": 2,
+        "chord": "D",
+        "start": 22.34,
+        "end": 22.56,
+        "desc": "2nd fret B string (Verse downbeat)"
+      },
+      {
+        "word": "-na-",
+        "pitch": "C#4",
+        "string": 4,
+        "fret": 2,
+        "start": 22.58,
+        "end": 22.75,
+        "desc": "2nd fret B string"
+      },
+      {
+        "word": "-mai-",
+        "pitch": "C#4",
+        "string": 4,
+        "fret": 2,
+        "start": 22.76,
+        "end": 22.95,
+        "desc": "2nd fret B string"
+      },
+      {
+        "word": "-na",
+        "pitch": "D4",
+        "string": 4,
+        "fret": 3,
+        "start": 22.98,
+        "end": 23.9,
+        "desc": "3rd fret B string"
+      },
+      {
+        "word": "aa-",
+        "pitch": "C#4",
+        "string": 4,
+        "fret": 2,
+        "start": 23.95,
+        "end": 24.3,
+        "desc": "2nd fret B string"
+      },
+      {
+        "word": "-ga-",
+        "pitch": "E4",
+        "string": 5,
+        "fret": 0,
+        "start": 24.35,
+        "end": 24.8,
+        "desc": "Open high e string"
+      },
+      {
+        "word": "-ka...",
+        "pitch": "B3",
+        "string": 4,
+        "fret": 0,
+        "chord": "Bm",
+        "start": 24.85,
+        "end": 26.2,
+        "desc": "Open B string with Bm root"
+      }
+    ],
+    [
+      {
+        "word": "Le",
+        "pitch": "D4",
+        "string": 4,
+        "fret": 3,
+        "chord": "G",
+        "start": 28.2,
+        "end": 28.5,
+        "desc": "3rd fret B string with G bass"
+      },
+      {
+        "word": "Pa-",
+        "pitch": "C#4",
+        "string": 4,
+        "fret": 2,
+        "start": 28.5,
+        "end": 28.8,
+        "desc": "2nd fret B string"
+      },
+      {
+        "word": "-dha",
+        "pitch": "D4",
+        "string": 4,
+        "fret": 3,
+        "start": 28.8,
+        "end": 29.8,
+        "desc": "3rd fret B string"
+      },
+      {
+        "word": "Pa-",
+        "pitch": "C#4",
+        "string": 4,
+        "fret": 2,
+        "start": 29.85,
+        "end": 30.25,
+        "desc": "2nd fret B string"
+      },
+      {
+        "word": "-dhaa...",
+        "pitch": "D4",
+        "string": 4,
+        "fret": 3,
+        "chord": "A",
+        "start": 30.25,
+        "end": 30.45,
+        "desc": "3rd fret B string"
+      },
+      {
+        "word": "oo-",
+        "pitch": "E4",
+        "string": 5,
+        "fret": 0,
+        "start": 30.45,
+        "end": 30.85,
+        "desc": "Open high e string"
+      },
+      {
+        "word": "-ho...",
+        "pitch": "D4",
+        "string": 4,
+        "fret": 3,
+        "chord": "D",
+        "start": 30.85,
+        "end": 32.5,
+        "desc": "3rd fret B string with ringing D chord"
+      }
+    ],
+    [
+      {
+        "word": "Che-",
+        "pitch": "C#4",
+        "string": 4,
+        "fret": 2,
+        "chord": "D",
+        "start": 33.8,
+        "end": 34.05,
+        "desc": "2nd fret B string"
+      },
+      {
+        "word": "-ru-",
+        "pitch": "C#4",
+        "string": 4,
+        "fret": 2,
+        "start": 34.05,
+        "end": 34.3,
+        "desc": "2nd fret B string"
+      },
+      {
+        "word": "-ko",
+        "pitch": "D4",
+        "string": 4,
+        "fret": 3,
+        "start": 34.3,
+        "end": 35.1,
+        "desc": "3rd fret B string"
+      },
+      {
+        "word": "nee",
+        "pitch": "C#4",
+        "string": 4,
+        "fret": 2,
+        "start": 35.15,
+        "end": 35.5,
+        "desc": "2nd fret B string"
+      },
+      {
+        "word": "ka-",
+        "pitch": "E4",
+        "string": 5,
+        "fret": 0,
+        "start": 35.5,
+        "end": 35.9,
+        "desc": "Open high e string"
+      },
+      {
+        "word": "-la-",
+        "pitch": "D4",
+        "string": 4,
+        "fret": 3,
+        "start": 35.9,
+        "end": 36.3,
+        "desc": "3rd fret B string"
+      },
+      {
+        "word": "-la",
+        "pitch": "B3",
+        "string": 4,
+        "fret": 0,
+        "chord": "Bm",
+        "start": 36.3,
+        "end": 37.2,
+        "desc": "Open B string with Bm root"
+      }
+    ],
+    [
+      {
+        "word": "tee-",
+        "pitch": "D4",
+        "string": 4,
+        "fret": 3,
+        "chord": "G",
+        "start": 37.3,
+        "end": 37.7,
+        "desc": "3rd fret B string"
+      },
+      {
+        "word": "-ra-",
+        "pitch": "C#4",
+        "string": 4,
+        "fret": 2,
+        "start": 37.7,
+        "end": 38.1,
+        "desc": "2nd fret B string"
+      },
+      {
+        "word": "-mai...",
+        "pitch": "D4",
+        "string": 4,
+        "fret": 3,
+        "chord": "A",
+        "start": 38.1,
+        "end": 40.0,
+        "desc": "3rd fret B string with A sustain"
+      }
+    ],
+    [
+      {
+        "word": "Le",
+        "pitch": "F#4",
+        "string": 5,
+        "fret": 2,
+        "chord": "D",
+        "start": 52.8,
+        "end": 53.2,
+        "desc": "2nd fret high e (Chorus anthem downbeat)"
+      },
+      {
+        "word": "Pa-",
+        "pitch": "E4",
+        "string": 5,
+        "fret": 0,
+        "start": 53.2,
+        "end": 53.5,
+        "desc": "Open high e string"
+      },
+      {
+        "word": "-dha",
+        "pitch": "F#4",
+        "string": 5,
+        "fret": 2,
+        "start": 53.5,
+        "end": 53.85,
+        "desc": "2nd fret high e"
+      },
+      {
+        "word": "Pa-",
+        "pitch": "D4",
+        "string": 4,
+        "fret": 3,
+        "start": 53.85,
+        "end": 54.2,
+        "desc": "3rd fret B string"
+      },
+      {
+        "word": "-dhaa...",
+        "pitch": "E4",
+        "string": 5,
+        "fret": 0,
+        "chord": "Bm",
+        "start": 54.2,
+        "end": 55.2,
+        "desc": "Open high e with Bm bass"
+      },
+      {
+        "word": "Pa-",
+        "pitch": "F#4",
+        "string": 5,
+        "fret": 2,
+        "start": 55.3,
+        "end": 55.6,
+        "desc": "2nd fret high e"
+      },
+      {
+        "word": "-ya-",
+        "pitch": "E4",
+        "string": 5,
+        "fret": 0,
+        "start": 55.6,
+        "end": 55.9,
+        "desc": "Open high e string"
+      }
+    ],
+    [
+      {
+        "word": "-na-",
+        "pitch": "F#4",
+        "string": 5,
+        "fret": 2,
+        "start": 55.9,
+        "end": 56.25,
+        "desc": "2nd fret high e"
+      },
+      {
+        "word": "-me",
+        "pitch": "D4",
+        "string": 4,
+        "fret": 3,
+        "start": 56.25,
+        "end": 56.6,
+        "desc": "3rd fret B string"
+      },
+      {
+        "word": "aa-",
+        "pitch": "E4",
+        "string": 5,
+        "fret": 0,
+        "start": 56.6,
+        "end": 57.0,
+        "desc": "Open high e string"
+      },
+      {
+        "word": "-ga-",
+        "pitch": "F#4",
+        "string": 5,
+        "fret": 2,
+        "chord": "G",
+        "start": 57.0,
+        "end": 57.4,
+        "desc": "2nd fret high e with G bass"
+      },
+      {
+        "word": "-ka...",
+        "pitch": "G4",
+        "string": 3,
+        "fret": 0,
+        "start": 57.4,
+        "end": 58.5,
+        "desc": "Open G string"
+      },
+      {
+        "word": "Ge-",
+        "pitch": "G4",
+        "string": 3,
+        "fret": 0,
+        "chord": "A",
+        "start": 58.6,
+        "end": 58.9,
+        "desc": "Open G string"
+      },
+      {
+        "word": "-lu-",
+        "pitch": "F#4",
+        "string": 5,
+        "fret": 2,
+        "start": 58.9,
+        "end": 59.2,
+        "desc": "2nd fret high e"
+      }
+    ],
+    [
+      {
+        "word": "-pu-",
+        "pitch": "G4",
+        "string": 3,
+        "fret": 0,
+        "start": 59.2,
+        "end": 59.5,
+        "desc": "Open G string"
+      },
+      {
+        "word": "-ne",
+        "pitch": "F#4",
+        "string": 5,
+        "fret": 2,
+        "start": 59.5,
+        "end": 59.8,
+        "desc": "2nd fret high e"
+      },
+      {
+        "word": "ko-",
+        "pitch": "G4",
+        "string": 3,
+        "fret": 0,
+        "start": 59.8,
+        "end": 60.1,
+        "desc": "Open G string"
+      },
+      {
+        "word": "-ru-",
+        "pitch": "A4",
+        "string": 5,
+        "fret": 5,
+        "chord": "D",
+        "start": 60.1,
+        "end": 60.6,
+        "desc": "5th fret high e"
+      },
+      {
+        "word": "-ko",
+        "pitch": "F#4",
+        "string": 5,
+        "fret": 2,
+        "start": 60.6,
+        "end": 61.1,
+        "desc": "2nd fret high e"
+      },
+      {
+        "word": "nes-",
+        "pitch": "E4",
+        "string": 5,
+        "fret": 0,
+        "chord": "A",
+        "start": 61.1,
+        "end": 61.6,
+        "desc": "Open high e"
+      },
+      {
+        "word": "-tha-",
+        "pitch": "F#4",
+        "string": 5,
+        "fret": 2,
+        "start": 61.6,
+        "end": 62.0,
+        "desc": "2nd fret high e"
+      }
+    ],
+    [
+      {
+        "word": "-maa~~~",
+        "pitch": "D4",
+        "string": 4,
+        "fret": 3,
+        "chord": "D",
+        "start": 62.0,
+        "end": 64.5,
+        "desc": "3rd fret B string with triumphant D Major finale"
+      }
+    ]
+  ]
 };
 
-let songs = [ishqOhPriyaPriyaSong, oPriyaPriyaSong, asherIntroSong, yeMantramoSong, demoSong];
+let songs = [ishqOhPriyaPriyaSong, lePadhaPadhaaSong, oPriyaPriyaSong, asherIntroSong, yeMantramoSong];
 let currentSong = songs[0];
 let notationMode = "tab";
 let autoScrollEnabled = true;
@@ -2664,7 +3248,7 @@ ensureTimings(ishqOhPriyaPriyaSong);
 ensureTimings(oPriyaPriyaSong);
 ensureTimings(asherIntroSong);
 ensureTimings(yeMantramoSong);
-ensureTimings(demoSong);
+ensureTimings(lePadhaPadhaaSong);
 
 function buildFret(song){
   const flatTokens=[]; song.lines.forEach(line=>line.forEach(tok=>flatTokens.push(tok)));
