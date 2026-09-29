@@ -43,6 +43,7 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
 from pipeline import process_song, process_song_from_audio
+from gdrive import drive_service
 
 app = FastAPI(title="Sargam Strings API")
 
@@ -142,24 +143,35 @@ def _run_job(job_id: str, query: str, language: str | None):
     try:
         persisted_audio = os.path.join(job_dir, "audio.wav")
         result = process_song(query, language=language, target_audio_path=persisted_audio)
+        title = query.split("/")[-1].split("?")[0] if "http" in query else query
+        drive_res = drive_service.save_song(job_id, title=title, song_data=result, query_or_video_id=query)
         JOBS[job_id]["status"] = "done"
-        JOBS[job_id]["result"] = {"notes": result["notes"], "audio_url": f"/audio/{job_id}"}
+        JOBS[job_id]["step"] = "Complete"
+        JOBS[job_id]["result"] = {
+            "notes": result["notes"],
+            "audio_url": f"/audio/{job_id}",
+            "song_id": job_id,
+            "title": title,
+            "drive_synced": drive_res.get("drive_synced", False)
+        }
+        _save_job(job_id)
     except Exception as e:  # noqa: BLE001 — surface any pipeline failure to the client
         import traceback
         JOBS[job_id]["status"] = "error"
         JOBS[job_id]["error"] = f"{type(e).__name__}: {e}\n{traceback.format_exc()}"
+        _save_job(job_id)
 
 
-def _run_audio_job(job_id: str, raw_audio_path: str, language: str | None):
+def _run_audio_job(job_id: str, raw_audio_path: str, language: str | None, query: str | None = None):
     JOBS[job_id]["status"] = "running"
-    JOBS[job_id]["step"] = "Converting audio to WAV format..."
+    JOBS[job_id]["step"] = "Preparing audio..."
     _save_job(job_id)
     job_dir = os.path.join(JOBS_DIR, job_id)
     os.makedirs(job_dir, exist_ok=True)
     persisted_audio = os.path.join(job_dir, "audio.wav")
     try:
-        # Convert raw uploaded audio (mp3, webm, m4a, etc.) to 22050Hz mono wav (native to Basic Pitch)
-        cmd = ["ffmpeg", "-y", "-i", raw_audio_path, "-ar", "22050", "-ac", "1", persisted_audio]
+        # Convert raw uploaded audio (mp3, webm, m4a, etc.) directly to 16000Hz mono wav for zero-overhead YIN analysis
+        cmd = ["ffmpeg", "-y", "-i", raw_audio_path, "-ar", "16000", "-ac", "1", persisted_audio]
         conv_res = subprocess.run(cmd, capture_output=True, text=True)
         if conv_res.returncode != 0:
             raise RuntimeError(f"ffmpeg conversion failed: {conv_res.stderr or conv_res.stdout}")
@@ -169,9 +181,17 @@ def _run_audio_job(job_id: str, raw_audio_path: str, language: str | None):
             _save_job(job_id)
 
         result = process_song_from_audio(persisted_audio, language=language, progress_cb=progress_cb)
+        title = query or f"Song {job_id[:6]}"
+        drive_res = drive_service.save_song(job_id, title=title, song_data=result, query_or_video_id=query)
         JOBS[job_id]["status"] = "done"
         JOBS[job_id]["step"] = "Complete"
-        JOBS[job_id]["result"] = {"notes": result["notes"], "audio_url": f"/audio/{job_id}"}
+        JOBS[job_id]["result"] = {
+            "notes": result["notes"],
+            "audio_url": f"/audio/{job_id}",
+            "song_id": job_id,
+            "title": title,
+            "drive_synced": drive_res.get("drive_synced", False)
+        }
         _save_job(job_id)
     except Exception as e:
         import traceback
@@ -235,6 +255,26 @@ def process(req: ProcessRequest, request: Request, background_tasks: BackgroundT
     if not req.query or not req.query.strip():
         raise HTTPException(400, "query must be a YouTube URL or search text")
 
+    # Instant Drive / Local cache lookup (0.01s return)
+    cached = drive_service.find_cached_song(req.query)
+    if cached:
+        job_id = cached["id"]
+        cached_data = cached.get("data", {})
+        JOBS[job_id] = {
+            "status": "done",
+            "step": "Complete (from Google Drive / Cache)",
+            "result": {
+                "notes": cached_data.get("notes", []),
+                "audio_url": f"/audio/{job_id}",
+                "song_id": job_id,
+                "title": cached.get("title", req.query),
+                "drive_synced": True
+            },
+            "error": None
+        }
+        _save_job(job_id)
+        return {"job_id": job_id, "status": "done", "cached": True}
+
     job_id = str(uuid.uuid4())
     JOBS[job_id] = {"status": "queued", "result": None, "error": None}
     background_tasks.add_task(_run_job, job_id, req.query, req.language)
@@ -253,6 +293,27 @@ async def process_audio(
     check_api_key(x_api_key)
     check_rate_limit(request.client.host if request.client else "unknown")
 
+    # Instant Drive / Local cache lookup (0.01s return)
+    if query:
+        cached = drive_service.find_cached_song(query)
+        if cached:
+            job_id = cached["id"]
+            cached_data = cached.get("data", {})
+            JOBS[job_id] = {
+                "status": "done",
+                "step": "Complete (from Google Drive / Cache)",
+                "result": {
+                    "notes": cached_data.get("notes", []),
+                    "audio_url": f"/audio/{job_id}",
+                    "song_id": job_id,
+                    "title": cached.get("title", query),
+                    "drive_synced": True
+                },
+                "error": None
+            }
+            _save_job(job_id)
+            return {"job_id": job_id, "status": "done", "cached": True}
+
     job_id = str(uuid.uuid4())
     job_dir = os.path.join(JOBS_DIR, job_id)
     os.makedirs(job_dir, exist_ok=True)
@@ -266,7 +327,7 @@ async def process_audio(
 
     JOBS[job_id] = {"status": "queued", "result": None, "error": None}
     _save_job(job_id)
-    background_tasks.add_task(_run_audio_job, job_id, raw_path, language)
+    background_tasks.add_task(_run_audio_job, job_id, raw_path, language, query)
     return {"job_id": job_id, "status": "queued"}
 
 
@@ -282,33 +343,45 @@ def status(job_id: str):
 def get_audio(job_id: str):
     path = os.path.join(JOBS_DIR, job_id, "audio.wav")
     if not os.path.exists(path):
-        raise HTTPException(404, "job not found or not finished")
+        raise HTTPException(404, "audio not found")
     return FileResponse(path, media_type="audio/wav")
 
 
-# --- cross-device song persistence (simple JSON file store) ---
+# --- Google Drive & local song persistence ---
 
 class SavedSong(BaseModel):
     title: str
     data: dict
 
 
+@app.get("/songs")
+def list_songs():
+    return drive_service.list_songs()
+
+
 @app.post("/songs")
 def save_song(song: SavedSong, x_api_key: str | None = Header(default=None)):
     check_api_key(x_api_key)
     song_id = str(uuid.uuid4())
-    with open(os.path.join(SONGS_DIR, f"{song_id}.json"), "w") as f:
-        json.dump({"title": song.title, "data": song.data}, f)
-    return {"song_id": song_id}
+    res = drive_service.save_song(song_id, song.title, song.data)
+    return {"song_id": song_id, "drive_synced": res.get("drive_synced", False)}
 
 
 @app.get("/songs/{song_id}")
 def get_song(song_id: str):
-    path = os.path.join(SONGS_DIR, f"{song_id}.json")
-    if not os.path.exists(path):
+    song = drive_service.get_song(song_id)
+    if not song:
         raise HTTPException(404, "song not found")
-    with open(path) as f:
-        return json.load(f)
+    return song
+
+
+@app.get("/gdrive/status")
+def gdrive_status():
+    return {
+        "connected": drive_service.is_connected(),
+        "folder_name": "Sargam Strings Tabs",
+        "folder_id": drive_service.folder_id
+    }
 
 
 @app.get("/health")

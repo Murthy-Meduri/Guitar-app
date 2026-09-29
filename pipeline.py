@@ -25,12 +25,6 @@ import tempfile
 from dataclasses import dataclass, field
 from typing import Callable, List, Optional
 
-try:
-    import torch
-    torch.set_num_threads(2)
-except Exception:
-    pass
-
 import numpy as np
 
 # ---------------------------------------------------------------------------
