@@ -221,112 +221,89 @@ def freq_to_note(freq_hz: float) -> str:
 
 
 def detect_pitch_fast(wav_path: str, progress_cb: Optional[Callable[[str], None]] = None) -> List[PitchEvent]:
-    """Instant fundamental frequency detection via librosa YIN autocorrelation.
-    Runs in ~0.5 to 1.5 seconds on CPU with <20MB RAM (no Viterbi HMM, no neural nets)."""
+    """Accurate vocal melody extraction via Harmonic-Percussive Source Separation (HPSS),
+    formant bandpass filtering, and probabilistic YIN (pYIN) with Viterbi decoding."""
     import librosa
     import numpy as np
+    from scipy import signal
 
     if progress_cb:
-        progress_cb("Extracting melody notes & fretboard positions (instant engine)...")
+        progress_cb("Isolating singing harmonics and extracting vocal melody contour...")
 
-    # Analyze first 75 seconds (Intro, Verse, Chorus)
-    y, sr = librosa.load(wav_path, sr=16000, mono=True, duration=75.0)
+    # Analyze first 80 seconds (captures intro + full verse + chorus melody)
+    y, sr = librosa.load(wav_path, sr=16000, mono=True, duration=80.0)
 
-    # 1. Detect musical syllable onsets (rhythmic attacks of the melody)
-    onset_frames = librosa.onset.onset_detect(y=y, sr=sr, hop_length=384, backtrack=True)
-    onset_times = librosa.frames_to_time(onset_frames, sr=sr, hop_length=384)
+    # 1. Harmonic-Percussive Separation: isolate singing harmonics, eliminate drum beats and kicks
+    y_harm, _ = librosa.effects.hpss(y, margin=(2.0, 1.2))
 
-    # 2. Fast YIN pitch tracking
-    hop_length = 384
-    # Focus strictly on vocal lead melody range (C3 ~130.8 Hz to A5 ~880 Hz)
-    # This rejects bass guitar tracks (80-120 Hz) and kick drum rumble
-    fmin = float(librosa.note_to_hz('C3'))
-    fmax = float(librosa.note_to_hz('A5'))
-    f0 = librosa.yin(
-        y, fmin=fmin, fmax=fmax, sr=sr,
-        frame_length=2048, hop_length=hop_length,
-        trough_threshold=0.20
+    # 2. Vocal Formant Bandpass Filter (200 Hz to 2800 Hz): removes sub-bass rumble and high cymbal fizz
+    b_band, a_band = signal.butter(4, [200.0 / (sr / 2), 2800.0 / (sr / 2)], btype='bandpass')
+    y_vocal = signal.filtfilt(b_band, a_band, y_harm)
+
+    # 3. Probabilistic YIN with Viterbi HMM decoding for smooth, natural vocal pitch tracking
+    hop_length = 320
+    fmin = float(librosa.note_to_hz('G3'))  # ~196.0 Hz (excludes sub-bass / synth drone)
+    fmax = float(librosa.note_to_hz('A5'))  # ~880.0 Hz
+    f0, voiced_flag, voiced_probs = librosa.pyin(
+        y_vocal, fmin=fmin, fmax=fmax, sr=sr,
+        hop_length=hop_length, fill_na=np.nan
     )
-
-    rms = librosa.feature.rms(y=y, frame_length=2048, hop_length=hop_length)[0]
-    rms_thresh = max(0.003, float(np.percentile(rms, 15)))
 
     times = librosa.times_like(f0, sr=sr, hop_length=hop_length)
     events: List[PitchEvent] = []
 
-    # Onset-guided segmentation for clean musical notes (e.g. C C C D B B A)
-    if len(onset_times) >= 4:
-        for i, on_t in enumerate(onset_times):
-            next_t = onset_times[i + 1] if i + 1 < len(onset_times) else on_t + 0.6
-            dur = next_t - on_t
-            if dur < 0.08:
-                continue
-            dur = min(dur, 2.0)
+    # 4. Syllabic segmentation: splits into melodic notes matching the vocal syllables
+    in_note = False
+    cur_start = 0.0
+    cur_f0 = []
 
-            mask = (times >= on_t) & (times < on_t + dur)
-            seg_f0 = f0[mask]
-            seg_rms = rms[mask]
-
-            valid = seg_f0[(seg_f0 > (fmin + 5)) & (seg_f0 < (fmax - 5)) & ~np.isnan(seg_f0)]
-            valid_energy = seg_rms[~np.isnan(seg_f0)] if len(seg_rms) == len(seg_f0) else [1.0]
-
-            if len(valid) >= 2 and np.mean(valid_energy) > rms_thresh:
-                med_freq = float(np.median(valid))
-                note_name = freq_to_note(med_freq)
-                if note_name:
-                    events.append(PitchEvent(
-                        start=round(float(on_t), 3),
-                        end=round(float(on_t + dur * 0.92), 3),
-                        freq_hz=med_freq,
-                        note_name=note_name,
-                        confidence=0.95
-                    ))
-    else:
-        # Fallback energy-based segmentation
-        current_note = None
-        note_start = 0.0
-        note_freqs = []
-
-        for t, freq, energy in zip(times, f0, rms):
-            if energy > rms_thresh and (fmin + 5) < freq < (fmax - 5) and not np.isnan(freq):
-                note_name = freq_to_note(freq)
-                if note_name == current_note:
-                    note_freqs.append(freq)
-                else:
-                    if current_note and len(note_freqs) >= 3:
-                        avg_freq = float(np.median(note_freqs))
-                        events.append(PitchEvent(
-                            start=round(float(note_start), 3),
-                            end=round(float(t), 3),
-                            freq_hz=avg_freq,
-                            note_name=freq_to_note(avg_freq),
-                            confidence=0.9
-                        ))
-                    current_note = note_name
-                    note_start = t
-                    note_freqs = [freq]
+    for t, f, v, p in zip(times, f0, voiced_flag, voiced_probs):
+        if v and p > 0.40 and not np.isnan(f) and f >= 180.0:
+            if not in_note:
+                in_note = True
+                cur_start = float(t)
+                cur_f0 = [float(f)]
             else:
-                if current_note and len(note_freqs) >= 3:
-                    avg_freq = float(np.median(note_freqs))
+                med = float(np.median(cur_f0))
+                # Melodic split if pitch shifts by >= 1.2 semitones within a singing line
+                if abs(12.0 * math.log2(float(f) / med)) > 1.2 and len(cur_f0) >= 4:
+                    dur = float(t) - cur_start
+                    if dur >= 0.08:
+                        events.append(PitchEvent(
+                            start=round(cur_start, 3),
+                            end=round(float(t), 3),
+                            freq_hz=med,
+                            note_name=freq_to_note(med),
+                            confidence=0.95
+                        ))
+                    cur_start = float(t)
+                    cur_f0 = [float(f)]
+                else:
+                    cur_f0.append(float(f))
+        else:
+            if in_note:
+                dur = float(t) - cur_start
+                if dur >= 0.08 and len(cur_f0) >= 3:
+                    med = float(np.median(cur_f0))
                     events.append(PitchEvent(
-                        start=round(float(note_start), 3),
+                        start=round(cur_start, 3),
                         end=round(float(t), 3),
-                        freq_hz=avg_freq,
-                        note_name=freq_to_note(avg_freq),
-                        confidence=0.9
+                        freq_hz=med,
+                        note_name=freq_to_note(med),
+                        confidence=0.92
                     ))
-                current_note = None
-                note_freqs = []
+                in_note = False
+                cur_f0 = []
 
-        if current_note and len(note_freqs) >= 3 and len(times) > 0:
-            avg_freq = float(np.median(note_freqs))
-            events.append(PitchEvent(
-                start=round(float(note_start), 3),
-                end=round(float(times[-1]), 3),
-                freq_hz=avg_freq,
-                note_name=freq_to_note(avg_freq),
-                confidence=0.9
-            ))
+    if in_note and len(cur_f0) >= 3 and len(times) > 0:
+        med = float(np.median(cur_f0))
+        events.append(PitchEvent(
+            start=round(cur_start, 3),
+            end=round(float(times[-1]), 3),
+            freq_hz=med,
+            note_name=freq_to_note(med),
+            confidence=0.90
+        ))
 
     events.sort(key=lambda e: e.start)
     return events
@@ -556,82 +533,114 @@ def estimate_key_and_chords(y: np.ndarray, sr: int) -> dict:
     }
 
 
-def synthesize_guitar_audio(notes: List[dict], total_duration: float, out_wav_path: str, sr: int = 22050):
-    """Synthesize authentic acoustic guitar solo audio for generated tabs using Karplus-Strong physical modeling with soundboard resonance."""
+def synthesize_guitar_audio(notes: List[dict], total_duration: float, out_wav_path: str, bpm: int = 99, chords: Optional[List[str]] = None, sr: int = 22050):
+    """Synthesize authentic acoustic solo guitar cover: continuous rhythmic fingerstyle chord backing + expressive singing lead melody."""
     import soundfile as sf
     from scipy import signal
 
-    total_samples = max(int(sr * (total_duration + 2.5)), sr * 2)
+    total_samples = max(int(sr * (total_duration + 3.0)), sr * 4)
     track = np.zeros(total_samples, dtype=np.float32)
 
     STRING_OPENS = [82.41, 110.00, 146.83, 196.00, 246.94, 329.63]
 
     CHORD_BASS_MAP = {
-        "D": 146.83, "Dm": 146.83, "C": 130.81, "Bb": 116.54, "A": 110.00, "Am": 110.00,
-        "G": 98.00, "Gm": 98.00, "E": 82.41, "Em": 82.41, "F": 87.31, "Bm": 123.47
+        "D": 146.83, "Dm": 146.83, "C": 130.81, "Cm": 65.41, "Bb": 116.54, "A": 110.00, "Am": 110.00,
+        "G": 98.00, "Gm": 98.00, "E": 82.41, "Em": 82.41, "F": 87.31, "Fm": 87.31, "Bm": 123.47,
+        "Ab": 103.83, "D#": 155.56, "Eb": 155.56
+    }
+    CHORD_MID_MAP = {
+        "Cm": [196.0, 261.6, 311.1], "Bb": [174.6, 233.1, 293.7], "Ab": [155.6, 207.7, 261.6], "Gm": [146.8, 196.0, 246.9],
+        "Dm": [220.0, 293.7, 349.2], "C": [196.0, 261.6, 329.6], "A7": [220.0, 277.2, 329.6], "F": [174.6, 220.0, 261.6],
+        "D": [220.0, 293.7, 369.9], "G": [196.0, 246.9, 293.7], "Am": [220.0, 261.6, 329.6], "Em": [196.0, 246.9, 329.6]
     }
 
-    last_bass_time = -99.0
-    for idx, n in enumerate(notes):
+    active_chords = chords or ["Cm", "Bb", "Ab", "Gm"]
+    beat_dur = 60.0 / max(60, min(180, bpm))
+
+    def make_ks(freq: float, dur_s: float, is_bass: bool = False, pick_ratio: float = 0.25, decay_val: float = 0.995) -> np.ndarray:
+        if freq <= 15.0 or np.isnan(freq):
+            return np.zeros(int(sr * dur_s), dtype=np.float32)
+        n = max(10, int(sr * dur_s))
+        delay = max(2, int(round(sr / freq)))
+        buf = np.zeros(n, dtype=np.float32)
+        pick_pos = max(1, int(round(delay * pick_ratio)))
+        tri = np.zeros(delay, dtype=np.float32)
+        for i in range(delay):
+            tri[i] = (i / pick_pos) if i < pick_pos else ((delay - i) / max(1, delay - pick_pos))
+        noise = np.random.uniform(-0.4, 0.4, delay).astype(np.float32)
+        buf[:delay] = (tri * 0.72 + noise) * 0.85
+        decay = decay_val if is_bass else min(0.996, 0.991 + 0.005 * (200.0 / max(120.0, freq)))
+        for i in range(delay, n):
+            prev = buf[i - delay - 1] if (i - delay - 1 >= 0) else buf[delay - 1]
+            buf[i] = 0.5 * (buf[i - delay] + prev) * decay
+        return buf
+
+    # 1. Continuous Acoustic Guitar Rhythm Accompaniment (Thumb Bass + Arpeggio Chimes in Tempo)
+    t_meas = 0.0
+    meas_idx = 0
+    end_time = max(total_duration, float(notes[-1].get("end", 0.0)) if notes else 0.0)
+    while t_meas < end_time + 1.5:
+        ch = active_chords[meas_idx % len(active_chords)].replace("[", "").replace("]", "").strip()
+        b_root = CHORD_BASS_MAP.get(ch, 110.0)
+        mids = CHORD_MID_MAP.get(ch, [196.0, 246.9, 329.6])
+
+        # Beat 1: Warm resonant thumb bass root
+        s1 = int(t_meas * sr)
+        if s1 < total_samples:
+            buf1 = make_ks(b_root, beat_dur * 1.8, is_bass=True, pick_ratio=0.35, decay_val=0.9965)
+            n_write = min(len(buf1), total_samples - s1)
+            track[s1:s1 + n_write] += buf1[:n_write] * 0.38
+
+        # Beat 2: Light acoustic chord inner chime
+        s2 = int((t_meas + beat_dur) * sr)
+        if s2 < total_samples:
+            buf2 = make_ks(mids[1], beat_dur * 0.9, is_bass=False, pick_ratio=0.22, decay_val=0.992)
+            n_write = min(len(buf2), total_samples - s2)
+            track[s2:s2 + n_write] += buf2[:n_write] * 0.22
+
+        # Beat 3: Alternate bass (5th degree or octave)
+        s3 = int((t_meas + 2 * beat_dur) * sr)
+        if s3 < total_samples:
+            buf3 = make_ks(b_root * 1.5, beat_dur * 1.5, is_bass=True, pick_ratio=0.30, decay_val=0.995)
+            n_write = min(len(buf3), total_samples - s3)
+            track[s3:s3 + n_write] += buf3[:n_write] * 0.28
+
+        # Beat 4: Acoustic chord upstroke brush
+        s4 = int((t_meas + 3 * beat_dur) * sr)
+        if s4 < total_samples:
+            buf4 = make_ks(mids[2], beat_dur * 0.85, is_bass=False, pick_ratio=0.20, decay_val=0.991)
+            n_write = min(len(buf4), total_samples - s4)
+            track[s4:s4 + n_write] += buf4[:n_write] * 0.20
+
+        t_meas += 4 * beat_dur
+        meas_idx += 1
+
+    # 2. Solo Lead Melody Guitar Plucks (Singing notes)
+    for n in notes:
         st = float(n.get("start", 0.0))
-        dur = max(0.35, min(2.5, float(n.get("end", st + 0.5)) - st))
+        dur = max(0.20, min(3.0, float(n.get("end", st + 0.45)) - st))
         s_idx = max(0, min(5, int(n.get("string", 3))))
         fret = max(0, min(15, int(n.get("fret", 0))))
         freq = STRING_OPENS[s_idx] * (2.0 ** (fret / 12.0))
 
-        # Fingerstyle Thumb Bass accompaniment on chord changes / phrase downbeats (>1.6s interval)
-        if st - last_bass_time >= 1.6:
-            chord = n.get("chord") or (notes[0].get("chord") if notes else "D") or "D"
-            base_chord = chord.replace("[", "").replace("]", "").strip()
-            bass_freq = CHORD_BASS_MAP.get(base_chord, 110.0)
-            b_delay = max(2, int(round(sr / bass_freq)))
-            b_n_samples = int(sr * 2.2)
-            b_buf = np.zeros(b_n_samples, dtype=np.float32)
-            b_tri = np.zeros(b_delay, dtype=np.float32)
-            b_pick = max(1, int(round(b_delay * 0.32)))
-            for ti in range(b_delay):
-                b_tri[ti] = (ti / b_pick) if ti < b_pick else ((b_delay - ti) / max(1, b_delay - b_pick))
-            b_buf[:b_delay] = (b_tri * 0.75 + np.random.uniform(-0.25, 0.25, b_delay)) * 0.85
-            for i in range(b_delay, b_n_samples):
-                prev = b_buf[i - b_delay - 1] if (i - b_delay - 1 >= 0) else b_buf[b_delay - 1]
-                b_buf[i] = 0.5 * (b_buf[i - b_delay] + prev) * 0.9965
-            b_start = int(st * sr)
-            b_end = min(total_samples, b_start + b_n_samples)
-            track[b_start:b_end] += b_buf[:b_end - b_start] * 0.45
-            last_bass_time = st
-
-        delay_len = max(2, int(round(sr / freq)))
-        pick_pos = max(1, int(round(delay_len * 0.22)))
-        noise = np.random.uniform(-0.45, 0.45, delay_len).astype(np.float32)
-        tri = np.zeros(delay_len, dtype=np.float32)
-        for ti in range(delay_len):
-            tri[ti] = (ti / pick_pos) if ti < pick_pos else ((delay_len - ti) / max(1, delay_len - pick_pos))
-        buf = np.zeros(n_samples, dtype=np.float32)
-        buf[:delay_len] = (tri * 0.65 + noise) * 0.8
-        decay = min(0.996, 0.991 + 0.005 * (200.0 / max(120.0, freq)))  # natural frequency-dependent decay
-        for i in range(delay_len, n_samples):
-            prev = buf[i - delay_len - 1] if (i - delay_len - 1 >= 0) else buf[delay_len - 1]
-            buf[i] = 0.5 * (buf[i - delay_len] + prev) * decay
-
         start_samp = int(st * sr)
-        end_samp = start_samp + n_samples
-        if end_samp > total_samples:
-            end_samp = total_samples
-            buf = buf[:end_samp - start_samp]
-        track[start_samp:end_samp] += buf * 0.55
+        if start_samp < total_samples:
+            lead_buf = make_ks(freq, dur * 1.35, is_bass=False, pick_ratio=0.22)
+            n_lead = min(len(lead_buf), total_samples - start_samp)
+            track[start_samp:start_samp + n_lead] += lead_buf[:n_lead] * 0.78
 
-    # Acoustic guitar body resonance (air cavity ~105Hz and soundboard ~210Hz)
+    # 3. Acoustic guitar soundboard (~215Hz) and air cavity (~105Hz) physical resonance
     try:
         b1, a1 = signal.iirpeak(105.0, 3.5, fs=sr)
-        b2, a2 = signal.iirpeak(210.0, 3.0, fs=sr)
-        res = signal.lfilter(b1, a1, track) * 0.35 + signal.lfilter(b2, a2, track) * 0.25
-        track = track * 0.75 + res
+        b2, a2 = signal.iirpeak(215.0, 3.0, fs=sr)
+        res = signal.lfilter(b1, a1, track) * 0.32 + signal.lfilter(b2, a2, track) * 0.22
+        track = track * 0.72 + res
     except Exception:
         pass
 
     max_val = float(np.max(np.abs(track)))
     if max_val > 0.01:
-        track = (track / max_val) * 0.88
+        track = (track / max_val) * 0.90
 
     sf.write(out_wav_path, track, sr)
     return out_wav_path
@@ -683,7 +692,7 @@ def process_song_from_audio(wav_path: str, language: Optional[str] = None, progr
         progress_cb("Synthesizing authentic guitar audio track...")
 
     guitar_wav_path = target_guitar_wav or wav_path.replace(".wav", "_guitar.wav")
-    synthesize_guitar_audio(notes_out, total_dur, guitar_wav_path)
+    synthesize_guitar_audio(notes_out, total_dur, guitar_wav_path, bpm=musical_info["bpm"], chords=musical_info["chords"])
 
     return {
         "source_wav": wav_path,

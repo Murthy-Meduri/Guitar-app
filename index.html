@@ -228,7 +228,10 @@ footer{text-align:center;font-size:.72rem;opacity:.5;margin-top:30px}
       <option value="chords">🎼 Chords Only</option>
     </select>
     <select id="songSel"></select>
+    <button class="btn ghost small" id="skipIntroBtn" style="border-color:var(--brass);color:var(--brass-2);font-weight:600" title="Skip to the main vocal singing melody">⏩ Skip to Chorus</button>
     <button class="btn ghost small" id="accompToggleBtn" style="border-color:var(--brass);color:var(--brass-2);font-weight:600" title="Toggle acoustic fingerstyle thumb bass & chord rhythm accompaniment">🎸 Fingerstyle Rhythm: ON</button>
+    <label class="small-label" style="display:inline-flex;align-items:center;gap:4px;margin:0 2px">🎸 Rhythm <input type="range" id="rhythmVolSlider" min="0" max="100" value="65" style="width:55px;accent-color:var(--brass)"></label>
+    <label class="small-label" style="display:inline-flex;align-items:center;gap:4px;margin:0 2px">🎵 Solo <input type="range" id="soloVolSlider" min="0" max="100" value="90" style="width:55px;accent-color:var(--brass)"></label>
     <button class="btn ghost small" id="loopABtn">Loop A</button>
     <button class="btn ghost small" id="loopBBtn">Loop B</button>
     <button class="btn ghost small" id="loopToggleBtn">Loop: off</button>
@@ -463,7 +466,10 @@ function getReverbNode(c){
   }
 }
 
-function pluck(freq, dur=1.2, time=0, isBass=false, vol=0.85){
+let rhythmVolumeScale = 0.65;
+let soloLeadVolumeScale = 0.90;
+
+function pluck(freq, dur=1.2, time=0, isBass=false, vol=0.85, isRhythm=false){
   const c=ctx();
   if(!c || !freq || freq <= 0 || isNaN(freq)) return;
   if(c.state === "suspended") c.resume();
@@ -517,7 +523,9 @@ function pluck(freq, dur=1.2, time=0, isBass=false, vol=0.85){
   topRes.gain.value = 3.5;
 
   const gain = c.createGain();
-  gain.gain.setValueAtTime(vol, t0);
+  const effVol = (isBass || isRhythm) ? (vol * rhythmVolumeScale) : (vol * soloLeadVolumeScale);
+  gain.gain.setValueAtTime(0.0001, t0);
+  gain.gain.linearRampToValueAtTime(effVol, t0 + 0.004);
   gain.gain.linearRampToValueAtTime(0.0001, t0 + dur);
 
   src.connect(filt).connect(bodyRes).connect(topRes).connect(gain);
@@ -904,6 +912,86 @@ if(downloadTabBtn){
 }
 
 // ---------- Song data ----------
+const ishqOhPriyaPriyaSong = {
+  title: "🎸 Oh Priya Priya (Ishq - 2012) — Solo Acoustic Guitar Melody (Full Rhythm & Chords)",
+  key: "C Minor",
+  bpm: 99,
+  strum: "Acoustic Fingerstyle Groove (Thumb Bass + Chord Strum + Singing Solo Melody)",
+  chords: ["Cm", "Bb", "Ab", "Gm"],
+  sections: [
+    "Intro: Acoustic Fingerstyle Groove",
+    "Verse: Naa You Are My Honey... Bunny...",
+    "Chorus 1: Oh Priya Priya... Oh Priya Priya...",
+    "Chorus 2: Dil Se Mere Suno Na...",
+    "Chorus 3: Oh Priya Priya... Naa Priya Priya...",
+    "Refrain: O My Dear Priya Priya..."
+  ],
+  lines: [
+    [
+      { word: "Naa...", pitch: "Eb4", string: 4, fret: 4, chord: "Cm", start: 0.40, end: 0.85, desc: "Fret 4 on B with resonant Cm thumb bass" },
+      { word: "you", pitch: "Eb4", string: 4, fret: 4, start: 0.85, end: 1.10, desc: "Fret 4 on B" },
+      { word: "are", pitch: "D4", string: 4, fret: 3, start: 1.10, end: 1.35, desc: "Fret 3 on B" },
+      { word: "my", pitch: "C4", string: 4, fret: 1, start: 1.35, end: 1.60, desc: "Fret 1 on B" },
+      { word: "ho-", pitch: "Eb4", string: 4, fret: 4, start: 1.60, end: 1.95, desc: "Fret 4 on B" },
+      { word: "-ney", pitch: "D4", string: 4, fret: 3, chord: "Bb", start: 1.95, end: 2.70, desc: "Fret 3 on B with Bb bass" }
+    ],
+    [
+      { word: "Naa...", pitch: "Eb4", string: 4, fret: 4, chord: "Ab", start: 2.90, end: 3.35, desc: "Fret 4 on B with Ab bass" },
+      { word: "you", pitch: "Eb4", string: 4, fret: 4, start: 3.35, end: 3.60, desc: "Fret 4 on B" },
+      { word: "are", pitch: "D4", string: 4, fret: 3, start: 3.60, end: 3.85, desc: "Fret 3 on B" },
+      { word: "my", pitch: "C4", string: 4, fret: 1, start: 3.85, end: 4.10, desc: "Fret 1 on B" },
+      { word: "bun-", pitch: "D4", string: 4, fret: 3, start: 4.10, end: 4.45, desc: "Fret 3 on B" },
+      { word: "-ny", pitch: "C4", string: 4, fret: 1, chord: "Gm", start: 4.45, end: 5.20, desc: "Fret 1 on B with Gm bass" }
+    ],
+    [
+      { word: "Oh...", pitch: "G4", string: 5, fret: 3, chord: "Cm", start: 5.40, end: 6.00, desc: "Fret 3 on high e (Chorus downbeat with Cm bass)" },
+      { word: "Pri-", pitch: "Bb4", string: 5, fret: 6, start: 6.00, end: 6.35, desc: "Fret 6 on high e" },
+      { word: "-ya", pitch: "G4", string: 5, fret: 3, start: 6.35, end: 6.70, desc: "Fret 3 on high e" },
+      { word: "Pri-", pitch: "F4", string: 5, fret: 1, start: 6.70, end: 7.05, desc: "Fret 1 on high e" },
+      { word: "-ya", pitch: "Eb4", string: 4, fret: 4, chord: "Bb", start: 7.05, end: 7.80, desc: "Fret 4 on B with Bb harmony" }
+    ],
+    [
+      { word: "Oh...", pitch: "F4", string: 5, fret: 1, chord: "Ab", start: 8.00, end: 8.60, desc: "Fret 1 on high e with Ab bass" },
+      { word: "Pri-", pitch: "G4", string: 5, fret: 3, start: 8.60, end: 8.95, desc: "Fret 3 on high e" },
+      { word: "-ya", pitch: "F4", string: 5, fret: 1, start: 8.95, end: 9.30, desc: "Fret 1 on high e" },
+      { word: "Pri-", pitch: "Eb4", string: 4, fret: 4, start: 9.30, end: 9.65, desc: "Fret 4 on B" },
+      { word: "-ya", pitch: "D4", string: 4, fret: 3, chord: "Gm", start: 9.65, end: 10.40, desc: "Fret 3 on B with Gm harmony" }
+    ],
+    [
+      { word: "Dil", pitch: "C4", string: 4, fret: 1, chord: "Cm", start: 10.60, end: 10.95, desc: "Fret 1 on B" },
+      { word: "se", pitch: "D4", string: 4, fret: 3, start: 10.95, end: 11.25, desc: "Fret 3 on B" },
+      { word: "me-", pitch: "Eb4", string: 4, fret: 4, start: 11.25, end: 11.55, desc: "Fret 4 on B" },
+      { word: "-re", pitch: "F4", string: 5, fret: 1, start: 11.55, end: 11.85, desc: "Fret 1 on high e" },
+      { word: "su-", pitch: "G4", string: 5, fret: 3, start: 11.85, end: 12.20, desc: "Fret 3 on high e" },
+      { word: "-no", pitch: "F4", string: 5, fret: 1, start: 12.20, end: 12.55, desc: "Fret 1 on high e" },
+      { word: "na...", pitch: "Eb4", string: 4, fret: 4, chord: "Bb", start: 12.55, end: 13.35, desc: "Fret 4 on B with Bb harmony" }
+    ],
+    [
+      { word: "Oh...", pitch: "G4", string: 5, fret: 3, chord: "Ab", start: 13.55, end: 14.15, desc: "Fret 3 on high e" },
+      { word: "Pri-", pitch: "Bb4", string: 5, fret: 6, start: 14.15, end: 14.50, desc: "Fret 6 on high e" },
+      { word: "-ya", pitch: "G4", string: 5, fret: 3, start: 14.50, end: 14.85, desc: "Fret 3 on high e" },
+      { word: "Pri-", pitch: "F4", string: 5, fret: 1, start: 14.85, end: 15.20, desc: "Fret 1 on high e" },
+      { word: "-ya", pitch: "Eb4", string: 4, fret: 4, chord: "Gm", start: 15.20, end: 15.65, desc: "Fret 4 on B" },
+      { word: "Naa", pitch: "F4", string: 5, fret: 1, start: 15.65, end: 16.00, desc: "Fret 1 on high e" },
+      { word: "Pri-", pitch: "G4", string: 5, fret: 3, start: 16.00, end: 16.35, desc: "Fret 3 on high e" },
+      { word: "-ya", pitch: "F4", string: 5, fret: 1, start: 16.35, end: 16.70, desc: "Fret 1 on high e" },
+      { word: "Pri-", pitch: "Eb4", string: 4, fret: 4, start: 16.70, end: 17.05, desc: "Fret 4 on B" },
+      { word: "-ya", pitch: "D4", string: 4, fret: 3, chord: "Cm", start: 17.05, end: 17.85, desc: "Fret 3 on B with Cm harmony" }
+    ],
+    [
+      { word: "O", pitch: "C4", string: 4, fret: 1, chord: "Cm", start: 18.05, end: 18.40, desc: "Fret 1 on B" },
+      { word: "my", pitch: "D4", string: 4, fret: 3, start: 18.40, end: 18.70, desc: "Fret 3 on B" },
+      { word: "dear", pitch: "Eb4", string: 4, fret: 4, start: 18.70, end: 19.05, desc: "Fret 4 on B" },
+      { word: "Pri-", pitch: "G4", string: 5, fret: 3, start: 19.05, end: 19.45, desc: "Fret 3 on high e" },
+      { word: "-ya...", pitch: "C5", string: 5, fret: 8, chord: "Bb", start: 19.45, end: 20.20, desc: "Fret 8 on high e (singing peak)" },
+      { word: "Pri-", pitch: "G4", string: 5, fret: 3, start: 20.20, end: 20.55, desc: "Fret 3 on high e" },
+      { word: "-ya...", pitch: "Eb4", string: 4, fret: 4, chord: "Ab", start: 20.55, end: 21.30, desc: "Fret 4 on B" },
+      { word: "Pri-", pitch: "D4", string: 4, fret: 3, start: 21.30, end: 21.65, desc: "Fret 3 on B" },
+      { word: "-ya~~~", pitch: "C4", string: 4, fret: 1, chord: "Cm", start: 21.65, end: 23.50, desc: "Fret 1 on B with final ringing Cm chord" }
+    ]
+  ]
+};
+
 const oPriyaPriyaSong = {
   title: "🎶 O Priya Priya (Geethanjali) — Acoustic Fingerstyle Solo Melody",
   key: "D Minor",
@@ -2507,7 +2595,7 @@ const demoSong = {
   sections: ["Verse","Verse","Chorus"]
 };
 
-let songs = [oPriyaPriyaSong, asherIntroSong, yeMantramoSong, demoSong];
+let songs = [ishqOhPriyaPriyaSong, oPriyaPriyaSong, asherIntroSong, yeMantramoSong, demoSong];
 let currentSong = songs[0];
 let notationMode = "tab";
 let autoScrollEnabled = true;
@@ -2527,6 +2615,7 @@ function ensureTimings(song){
     curr += secPerBeat * 0.4;
   });
 }
+ensureTimings(ishqOhPriyaPriyaSong);
 ensureTimings(oPriyaPriyaSong);
 ensureTimings(asherIntroSong);
 ensureTimings(yeMantramoSong);
@@ -2833,23 +2922,99 @@ function renderLyrics(){
 
 function renderNotation(){ notationMode==="tab" ? renderTabView() : renderLyrics(); }
 
-// Acoustic fingerstyle accompaniment: warm thumb bass roots and gentle arpeggio groove
+// Acoustic fingerstyle accompaniment: warm thumb bass roots, rhythmic chord strumming, and continuous groove
 const CHORD_BASS_FREQS = {
   "D": 146.83, "Dm": 146.83, "D7": 146.83, "Dsus2": 146.83, "Dsus4": 146.83,
-  "C": 130.81, "C7": 130.81, "Cmaj7": 130.81, "Cm": 130.81,
+  "C": 130.81, "C7": 130.81, "Cmaj7": 130.81, "Cm": 65.41,
   "Bb": 116.54, "B": 123.47, "Bm": 123.47, "B7": 123.47,
   "A": 110.00, "Am": 110.00, "A7": 110.00, "Asus2": 110.00, "Asus4": 110.00,
   "G": 98.00, "Gm": 98.00, "G7": 98.00,
   "E": 82.41, "Em": 82.41, "E7": 82.41,
-  "F": 87.31, "F#m": 92.50, "D#": 155.56
+  "F": 87.31, "Fm": 87.31, "F#m": 92.50, "Ab": 103.83, "D#": 155.56, "Eb": 155.56
 };
-let fingerstyleAccompanimentEnabled = true;
 
-function playChordBass(chordName){
+const CHORD_STRUM_NOTES = {
+  "Cm": [{ string: 4, fret: 1, pitch: "C4" }, { string: 3, fret: 0, pitch: "G3" }, { string: 2, fret: 1, pitch: "D#3" }],
+  "Bb": [{ string: 4, fret: 3, pitch: "D4" }, { string: 3, fret: 3, pitch: "Bb3" }, { string: 2, fret: 3, pitch: "F3" }],
+  "Ab": [{ string: 4, fret: 1, pitch: "C4" }, { string: 3, fret: 1, pitch: "Ab3" }, { string: 2, fret: 1, pitch: "Eb3" }],
+  "Gm": [{ string: 4, fret: 3, pitch: "D4" }, { string: 3, fret: 0, pitch: "G3" }, { string: 2, fret: 0, pitch: "D3" }],
+  "Dm": [{ string: 4, fret: 3, pitch: "D4" }, { string: 3, fret: 2, pitch: "A3" }, { string: 2, fret: 0, pitch: "D3" }],
+  "C": [{ string: 4, fret: 1, pitch: "C4" }, { string: 3, fret: 0, pitch: "G3" }, { string: 2, fret: 2, pitch: "E3" }],
+  "A7": [{ string: 4, fret: 2, pitch: "C#4" }, { string: 3, fret: 0, pitch: "G3" }, { string: 2, fret: 2, pitch: "E3" }],
+  "F": [{ string: 4, fret: 1, pitch: "C4" }, { string: 3, fret: 2, pitch: "A3" }, { string: 2, fret: 3, pitch: "F3" }]
+};
+
+let fingerstyleAccompanimentEnabled = true;
+let rhythmTimer = null;
+let currentRhythmChord = "Cm";
+
+function playChordBass(chordName, vol = 0.42){
   if(!chordName || !fingerstyleAccompanimentEnabled) return;
   const base = chordName.replace(/\[|\]/g, "").trim();
   const freq = CHORD_BASS_FREQS[base] || CHORD_BASS_FREQS[base.replace(/m|7|maj7|sus\d/g, "")] || 110.0;
-  pluck(freq, 2.2, 0, true, 0.70);
+  pluck(freq, 2.0, 0, true, vol, true);
+}
+
+function playChordBassAlt(chordName, vol = 0.30){
+  if(!fingerstyleAccompanimentEnabled) return;
+  const base = (chordName || "Cm").replace(/\[|\]/g, "").trim();
+  const freq = CHORD_BASS_FREQS[base] || 110.0;
+  pluck(freq * 1.5, 1.4, 0, true, vol, true);
+}
+
+function playChordStrum(chordName, vol = 0.22, isUpstroke = false){
+  if(!fingerstyleAccompanimentEnabled) return;
+  const base = (chordName || "Cm").replace(/\[|\]/g, "").trim();
+  const notes = CHORD_STRUM_NOTES[base] || CHORD_STRUM_NOTES[base.replace(/m|7|maj7|sus\d/g, "")] || CHORD_STRUM_NOTES["Cm"];
+  const list = isUpstroke ? [...notes].reverse() : notes;
+  list.forEach((n, idx) => {
+    setTimeout(() => {
+      if(playing && !stopRequested){
+        pluck(freqFor(n.pitch, n.string, n.fret), 0.65, 0, false, vol, true);
+      }
+    }, idx * 18);
+  });
+}
+
+function startAcousticRhythm(bpm, songChords){
+  stopAcousticRhythm();
+  if(!fingerstyleAccompanimentEnabled) return;
+  const speed = parseFloat(document.getElementById("speedSel").value) || 1.0;
+  const beatMs = ((60 / (bpm || 99)) / speed) * 1000;
+  const chords = songChords && songChords.length ? songChords : ["Cm", "Bb", "Ab", "Gm"];
+  let step = 0;
+  let chIdx = 0;
+
+  function rhythmStep(){
+    if(!playing || stopRequested) return;
+    const activeCh = currentRhythmChord || chords[chIdx % chords.length];
+    const beatInBar = step % 4;
+
+    if(beatInBar === 0){
+      playChordBass(activeCh, 0.45);
+    } else if(beatInBar === 1){
+      playChordStrum(activeCh, 0.24, false);
+    } else if(beatInBar === 2){
+      playChordBassAlt(activeCh, 0.32);
+    } else if(beatInBar === 3){
+      playChordStrum(activeCh, 0.20, true);
+      chIdx++;
+    }
+
+    step++;
+    if(playing && !stopRequested){
+      rhythmTimer = setTimeout(rhythmStep, beatMs);
+    }
+  }
+
+  rhythmStep();
+}
+
+function stopAcousticRhythm(){
+  if(rhythmTimer){
+    clearTimeout(rhythmTimer);
+    rhythmTimer = null;
+  }
 }
 
 function playNote(tok, col, flatIdx, noteDur=1.2){
@@ -2868,9 +3033,8 @@ function playNote(tok, col, flatIdx, noteDur=1.2){
   }
   highlightFret(tok.string, tok.fret);
 
-  // Trigger thumb acoustic bass on chord marks or phrase starts
-  if(fingerstyleAccompanimentEnabled && tok.chord){
-    playChordBass(tok.chord);
+  if(tok.chord){
+    currentRhythmChord = tok.chord;
   }
 
   // Realistic Acoustic Guitar Slide Articulation
@@ -2951,7 +3115,9 @@ async function playSequence(startIdx,endIdx){
   if(startIdx==null) startIdx=0;
   if(endIdx==null) endIdx=flat.length-1;
   const speed=parseFloat(document.getElementById("speedSel").value)||1.0;
-  const beat=(60/(currentSong.bpm||100))/speed;
+  currentRhythmChord = currentSong.chords && currentSong.chords.length ? currentSong.chords[0] : "Cm";
+  startAcousticRhythm(currentSong.bpm || 99, currentSong.chords);
+
   do{
     for(let i=startIdx;i<=endIdx && !stopRequested;i++){
       const tok=flat[i];
@@ -2966,22 +3132,6 @@ async function playSequence(startIdx,endIdx){
         const delta = (nextTok.start - tok.start) / speed;
         sleepMs = Math.max(75, Math.min(3500, delta * 1000));
         noteDur = Math.max(0.25, (tok.end && tok.end > tok.start ? (tok.end - tok.start) : delta) / speed);
-
-        // Natural fingerstyle acoustic rhythm fill during vocal pauses (>0.55s)
-        if(fingerstyleAccompanimentEnabled && delta > 0.55){
-          setTimeout(() => {
-            if(playing && !stopRequested){
-              pluck(196.00, 0.75, 0, false, 0.28); // gentle open G chime
-            }
-          }, delta * 1000 * 0.45);
-          if(delta > 0.85){
-            setTimeout(() => {
-              if(playing && !stopRequested){
-                pluck(246.94, 0.75, 0, false, 0.24); // gentle open B chime
-              }
-            }, delta * 1000 * 0.75);
-          }
-        }
       } else if(tok.end != null && tok.start != null && tok.end > tok.start){
         const dur = (tok.end - tok.start) / speed;
         sleepMs = Math.max(75, dur * 1000);
@@ -2992,6 +3142,7 @@ async function playSequence(startIdx,endIdx){
       await new Promise(r=>setTimeout(r, sleepMs));
     }
   } while(loopActive && !stopRequested && !(realAudio.src && realAudio.style.display!=="none"));
+  stopAcousticRhythm();
   playing=false;
 }
 
@@ -3020,11 +3171,56 @@ document.getElementById("playBtn").onclick=async ()=>{
 document.getElementById("stopBtn").onclick=()=>{
   stopRequested=true;
   playing=false;
+  stopAcousticRhythm();
   if(realAudio.src) realAudio.pause();
   document.querySelectorAll(".tab-note-badge.active").forEach(el=>el.classList.remove("active"));
   document.querySelectorAll(".tab-note-group.active").forEach(el=>el.classList.remove("active"));
   document.querySelectorAll(".note-col.active").forEach(e=>e.classList.remove("active"));
 };
+
+const skipIntroBtn = document.getElementById("skipIntroBtn");
+if(skipIntroBtn){
+  skipIntroBtn.onclick = () => {
+    const flat = flattenSong(currentSong);
+    let targetIdx = 0;
+    for(let i=0; i<flat.length; i++){
+      const w = (flat[i].word || "").toLowerCase();
+      if(w.includes("oh") || w.includes("pri") || w.includes("naa") || (flat[i].start && flat[i].start >= 4.0)){
+        targetIdx = i;
+        break;
+      }
+    }
+    stopRequested = true;
+    playing = false;
+    stopAcousticRhythm();
+    if(realAudio.src && realAudio.style.display !== "none"){
+      realAudio.currentTime = flat[targetIdx] ? (flat[targetIdx].start || 0) : 0;
+      realAudio.play();
+      playing = true;
+      stopRequested = false;
+    } else {
+      setTimeout(() => {
+        playing = true;
+        stopRequested = false;
+        playSequence(targetIdx, flat.length - 1);
+      }, 80);
+    }
+  };
+}
+
+const rhythmVolSlider = document.getElementById("rhythmVolSlider");
+if(rhythmVolSlider){
+  rhythmVolSlider.oninput = e => {
+    rhythmVolumeScale = parseInt(e.target.value) / 100.0;
+  };
+}
+
+const soloVolSlider = document.getElementById("soloVolSlider");
+if(soloVolSlider){
+  soloVolSlider.oninput = e => {
+    soloLeadVolumeScale = parseInt(e.target.value) / 100.0;
+  };
+}
 
 document.getElementById("speedSel").onchange=()=>{
   if(realAudio.src) realAudio.playbackRate=parseFloat(document.getElementById("speedSel").value);
@@ -3107,6 +3303,11 @@ if(accompBtn){
     fingerstyleAccompanimentEnabled = !fingerstyleAccompanimentEnabled;
     accompBtn.textContent = "🎸 Fingerstyle Rhythm: " + (fingerstyleAccompanimentEnabled ? "ON" : "OFF");
     accompBtn.style.color = fingerstyleAccompanimentEnabled ? "var(--brass-2)" : "var(--muted)";
+    if(!fingerstyleAccompanimentEnabled){
+      stopAcousticRhythm();
+    } else if(playing){
+      startAcousticRhythm(currentSong.bpm || 99, currentSong.chords);
+    }
   };
 }
 
