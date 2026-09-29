@@ -95,11 +95,19 @@ footer{text-align:center;font-size:.72rem;opacity:.5;margin-top:30px}
       </div>
     </div>
   </div>
-  <div class="row">
-    <input type="text" id="ytQuery" placeholder="Paste YouTube link (instant &lt;2s) or search song…" style="flex:1;min-width:200px">
-    <button class="btn" id="fetchBtn">Fetch & Analyze</button>
+  <div style="display:flex;gap:8px;margin-bottom:8px">
+    <button class="btn small" id="modeYoutubeBtn" style="padding:3px 12px;font-size:0.75rem">🔗 YouTube Song Link</button>
+    <button class="btn ghost small" id="modeCustomNotesBtn" style="padding:3px 12px;font-size:0.75rem">🎸 Type/Paste Melody Notes (e.g. C C C D B B A...)</button>
   </div>
-  <div class="small-label" id="apiStatus" style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:6px">Ready. Enter any YouTube song link above — instant output in seconds.</div>
+  <div class="row" id="youtubeInputRow">
+    <input type="text" id="ytQuery" placeholder="Paste YouTube link (instant &lt;2s) or search song…" style="flex:1;min-width:200px">
+    <button class="btn" id="fetchBtn">Fetch & Play Guitar</button>
+  </div>
+  <div class="row" id="customNotesInputRow" style="display:none">
+    <input type="text" id="customMelodyInput" placeholder="e.g. C C C D  B B A  B A  G A  E  C B C" value="C C C D  B B A  B A  G A  E  C B C" style="flex:1;min-width:200px">
+    <button class="btn" id="playCustomMelodyBtn">🎸 Play Melody on Guitar</button>
+  </div>
+  <div class="small-label" id="apiStatus" style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:6px">Ready. Enter YouTube link or paste melody notes above — guitar plucks each note in tempo.</div>
 
   <div id="audioControlsBar" style="display:flex;align-items:center;justify-content:space-between;margin-top:10px;flex-wrap:wrap;gap:8px;background:var(--card);padding:6px 10px;border-radius:6px;border:1px solid var(--paper-line)">
     <div style="display:flex;align-items:center;gap:6px">
@@ -643,6 +651,96 @@ if(audioTrackType){
     }
     realAudio.currentTime = currTime;
     if(wasPlaying) realAudio.play();
+  };
+}
+
+const modeYoutubeBtn = document.getElementById("modeYoutubeBtn");
+const modeCustomNotesBtn = document.getElementById("modeCustomNotesBtn");
+const youtubeInputRow = document.getElementById("youtubeInputRow");
+const customNotesInputRow = document.getElementById("customNotesInputRow");
+const playCustomMelodyBtn = document.getElementById("playCustomMelodyBtn");
+
+if(modeYoutubeBtn && modeCustomNotesBtn){
+  modeYoutubeBtn.onclick = () => {
+    modeYoutubeBtn.className = "btn small";
+    modeCustomNotesBtn.className = "btn ghost small";
+    youtubeInputRow.style.display = "flex";
+    customNotesInputRow.style.display = "none";
+  };
+  modeCustomNotesBtn.onclick = () => {
+    modeCustomNotesBtn.className = "btn small";
+    modeYoutubeBtn.className = "btn ghost small";
+    customNotesInputRow.style.display = "flex";
+    youtubeInputRow.style.display = "none";
+    document.getElementById("customMelodyInput").focus();
+  };
+}
+
+if(playCustomMelodyBtn){
+  playCustomMelodyBtn.onclick = () => {
+    const rawInput = document.getElementById("customMelodyInput").value.trim();
+    if(!rawInput) return;
+
+    const rawTokens = rawInput.toUpperCase().replace(/,/g, " ").split(/\s+/).filter(t => t.length > 0);
+    const parsedNotes = [];
+
+    rawTokens.forEach(tok => {
+      const map = {"DB":"C#","EB":"D#","GB":"F#","AB":"G#","BB":"A#"};
+      let normalized = tok;
+      for(const k in map) normalized = normalized.replaceAll(k, map[k]);
+
+      let i = 0;
+      while(i < normalized.length){
+        let twoChar = normalized.substr(i, 2);
+        let oneChar = normalized.substr(i, 1);
+        if(NOTE_ORDER.includes(twoChar)){
+          parsedNotes.push(twoChar);
+          i += 2;
+        } else if(NOTE_ORDER.includes(oneChar)){
+          parsedNotes.push(oneChar);
+          i += 1;
+        } else {
+          i += 1;
+        }
+      }
+    });
+
+    if(!parsedNotes.length){
+      document.getElementById("apiStatus").textContent = "Could not parse note letters. Please use notes: C, D, E, F, G, A, B";
+      return;
+    }
+
+    const lines = [];
+    let cur = [];
+    parsedNotes.forEach(p => {
+      cur.push({ word: p, pitch: p, string: 0, fret: 0, start: 0, end: 0 });
+      if(cur.length >= 4){ lines.push(cur); cur = []; }
+    });
+    if(cur.length) lines.push(cur);
+
+    const song = {
+      title: "Melody: " + parsedNotes.slice(0, 6).join(" ") + "...",
+      key: "C Major",
+      bpm: 104,
+      strum: "D - D U - U D -",
+      chords: ["C", "G", "Am", "F"],
+      lines: lines
+    };
+
+    buildFret(song);
+    songs.push(song);
+    refreshAll();
+    songSel.value = songs.length - 1;
+    currentSong = song;
+    renderMeta();
+    renderChords();
+    renderNotation();
+
+    stopRequested = false;
+    playing = true;
+    document.getElementById("apiStatus").textContent = `🎸 Playing ${parsedNotes.length} melody notes on guitar!`;
+    const flat = flattenSong(song);
+    playSequence(0, flat.length - 1);
   };
 }
 

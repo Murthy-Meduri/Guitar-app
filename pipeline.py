@@ -232,33 +232,77 @@ def detect_pitch_fast(wav_path: str, progress_cb: Optional[Callable[[str], None]
     # Analyze first 75 seconds (Intro, Verse, Chorus)
     y, sr = librosa.load(wav_path, sr=16000, mono=True, duration=75.0)
 
-    hop_length = 512
+    # 1. Detect musical syllable onsets (rhythmic attacks of the melody)
+    onset_frames = librosa.onset.onset_detect(y=y, sr=sr, hop_length=384, backtrack=True)
+    onset_times = librosa.frames_to_time(onset_frames, sr=sr, hop_length=384)
+
+    # 2. Fast YIN pitch tracking
+    hop_length = 384
     fmin = float(librosa.note_to_hz('E2'))   # Low E string (~82 Hz)
     fmax = float(librosa.note_to_hz('G5'))   # High guitar range (~784 Hz)
-
-    # Fast direct YIN pitch tracking (< 1 second runtime)
     f0 = librosa.yin(
         y, fmin=fmin, fmax=fmax, sr=sr,
         frame_length=2048, hop_length=hop_length,
-        trough_threshold=0.15
+        trough_threshold=0.18
     )
 
-    # Adaptive energy gate to filter out silence and non-tonal segments
     rms = librosa.feature.rms(y=y, frame_length=2048, hop_length=hop_length)[0]
     rms_thresh = max(0.003, float(np.percentile(rms, 15)))
 
     times = librosa.times_like(f0, sr=sr, hop_length=hop_length)
-
     events: List[PitchEvent] = []
-    current_note = None
-    note_start = 0.0
-    note_freqs = []
 
-    for t, freq, energy in zip(times, f0, rms):
-        if energy > rms_thresh and (fmin + 5) < freq < (fmax - 5) and not np.isnan(freq):
-            note_name = freq_to_note(freq)
-            if note_name == current_note:
-                note_freqs.append(freq)
+    # Onset-guided segmentation for clean musical notes (e.g. C C C D B B A)
+    if len(onset_times) >= 4:
+        for i, on_t in enumerate(onset_times):
+            next_t = onset_times[i + 1] if i + 1 < len(onset_times) else on_t + 0.6
+            dur = next_t - on_t
+            if dur < 0.08:
+                continue
+            dur = min(dur, 2.0)
+
+            mask = (times >= on_t) & (times < on_t + dur)
+            seg_f0 = f0[mask]
+            seg_rms = rms[mask]
+
+            valid = seg_f0[(seg_f0 > (fmin + 5)) & (seg_f0 < (fmax - 5)) & ~np.isnan(seg_f0)]
+            valid_energy = seg_rms[~np.isnan(seg_f0)] if len(seg_rms) == len(seg_f0) else [1.0]
+
+            if len(valid) >= 2 and np.mean(valid_energy) > rms_thresh:
+                med_freq = float(np.median(valid))
+                note_name = freq_to_note(med_freq)
+                if note_name:
+                    events.append(PitchEvent(
+                        start=round(float(on_t), 3),
+                        end=round(float(on_t + dur * 0.92), 3),
+                        freq_hz=med_freq,
+                        note_name=note_name,
+                        confidence=0.95
+                    ))
+    else:
+        # Fallback energy-based segmentation
+        current_note = None
+        note_start = 0.0
+        note_freqs = []
+
+        for t, freq, energy in zip(times, f0, rms):
+            if energy > rms_thresh and (fmin + 5) < freq < (fmax - 5) and not np.isnan(freq):
+                note_name = freq_to_note(freq)
+                if note_name == current_note:
+                    note_freqs.append(freq)
+                else:
+                    if current_note and len(note_freqs) >= 3:
+                        avg_freq = float(np.median(note_freqs))
+                        events.append(PitchEvent(
+                            start=round(float(note_start), 3),
+                            end=round(float(t), 3),
+                            freq_hz=avg_freq,
+                            note_name=freq_to_note(avg_freq),
+                            confidence=0.9
+                        ))
+                    current_note = note_name
+                    note_start = t
+                    note_freqs = [freq]
             else:
                 if current_note and len(note_freqs) >= 3:
                     avg_freq = float(np.median(note_freqs))
@@ -269,32 +313,18 @@ def detect_pitch_fast(wav_path: str, progress_cb: Optional[Callable[[str], None]
                         note_name=freq_to_note(avg_freq),
                         confidence=0.9
                     ))
-                current_note = note_name
-                note_start = t
-                note_freqs = [freq]
-        else:
-            if current_note and len(note_freqs) >= 3:
-                avg_freq = float(np.median(note_freqs))
-                events.append(PitchEvent(
-                    start=round(float(note_start), 3),
-                    end=round(float(t), 3),
-                    freq_hz=avg_freq,
-                    note_name=freq_to_note(avg_freq),
-                    confidence=0.9
-                ))
-            current_note = None
-            note_freqs = []
+                current_note = None
+                note_freqs = []
 
-    # Flush final trailing note
-    if current_note and len(note_freqs) >= 3 and len(times) > 0:
-        avg_freq = float(np.median(note_freqs))
-        events.append(PitchEvent(
-            start=round(float(note_start), 3),
-            end=round(float(times[-1]), 3),
-            freq_hz=avg_freq,
-            note_name=freq_to_note(avg_freq),
-            confidence=0.9
-        ))
+        if current_note and len(note_freqs) >= 3 and len(times) > 0:
+            avg_freq = float(np.median(note_freqs))
+            events.append(PitchEvent(
+                start=round(float(note_start), 3),
+                end=round(float(times[-1]), 3),
+                freq_hz=avg_freq,
+                note_name=freq_to_note(avg_freq),
+                confidence=0.9
+            ))
 
     events.sort(key=lambda e: e.start)
     return events
