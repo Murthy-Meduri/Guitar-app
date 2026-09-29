@@ -100,7 +100,26 @@ footer{text-align:center;font-size:.72rem;opacity:.5;margin-top:30px}
     <button class="btn" id="fetchBtn">Fetch & Analyze</button>
   </div>
   <div class="small-label" id="apiStatus" style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:6px">Ready. Enter any YouTube song link above — instant output in seconds.</div>
+
+  <div id="audioControlsBar" style="display:flex;align-items:center;justify-content:space-between;margin-top:10px;flex-wrap:wrap;gap:8px;background:var(--card);padding:6px 10px;border-radius:6px;border:1px solid var(--paper-line)">
+    <div style="display:flex;align-items:center;gap:6px">
+      <span style="font-weight:600;font-size:0.75rem;color:var(--brass-2)">Audio Source:</span>
+      <select id="audioTrackType" style="padding:2px 8px;font-size:0.75rem">
+        <option value="guitar">🎸 Guitar Audio (Tabs Played on Guitar)</option>
+        <option value="original">🎤 Original Song Audio</option>
+      </select>
+    </div>
+    <button class="btn ghost small" id="toggleLyricEditorBtn" style="padding:2px 10px;font-size:0.75rem">✏️ Paste / Edit Song Lyrics Above Notes</button>
+  </div>
   <audio id="realAudio" style="width:100%;margin-top:8px;display:none" controls></audio>
+
+  <div id="lyricEditorBox" style="display:none;margin-top:10px;padding:10px;background:var(--paper);border:1px dashed var(--brass);border-radius:6px">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+      <span style="font-weight:600;font-size:0.8rem;color:var(--brass-2)">📝 Paste Song Lyrics / Words</span>
+      <button class="btn small" id="applyLyricsBtn" style="padding:3px 12px">Apply Words to Notes</button>
+    </div>
+    <textarea id="lyricInput" placeholder="Paste your song lyrics here (e.g. Le padha padhaa zindagi ko bana muskara hai ke...)... Each word will automatically be placed directly above its guitar note & chord!" rows="3" style="width:100%;font-size:0.85rem;background:var(--card);border:1px solid var(--paper-line);border-radius:4px;padding:6px;color:var(--ink)"></textarea>
+  </div>
 </div>
 
 <div class="sheet" id="songSheet">
@@ -331,30 +350,30 @@ function freqFor(pitchName, si, fret){
   const midi = openMidi+fret;
   return 440*Math.pow(2,(midi-57)/12);
 }
-function pluck(freq, dur=0.9, time=0){
+function pluck(freq, dur=1.2, time=0){
   const c=ctx(); const t0=c.currentTime+time;
-  const gain=c.createGain();
-  gain.gain.setValueAtTime(0.0001,t0);
-  gain.gain.linearRampToValueAtTime(0.5,t0+0.008);
-  gain.gain.exponentialRampToValueAtTime(0.0001,t0+dur);
-  const filt=c.createBiquadFilter(); filt.type="lowpass"; filt.frequency.setValueAtTime(3200,t0); filt.frequency.exponentialRampToValueAtTime(600,t0+dur);
-  gain.connect(filt).connect(c.destination);
-  [1,2,2.76,4.0].forEach((mult,i)=>{
-    const o=c.createOscillator(); o.type= i===0?"triangle":"sine";
-    o.frequency.setValueAtTime(freq*mult, t0);
-    const og=c.createGain(); og.gain.setValueAtTime(1/(i+1.6), t0);
-    o.connect(og).connect(gain);
-    o.start(t0); o.stop(t0+dur+0.05);
-  });
-  // pluck noise transient
-  const bufSize = c.sampleRate*0.02;
-  const buf=c.createBuffer(1,bufSize,c.sampleRate);
-  const d=buf.getChannelData(0);
-  for(let i=0;i<bufSize;i++) d[i]=(Math.random()*2-1)*(1-i/bufSize);
-  const noise=c.createBufferSource(); noise.buffer=buf;
-  const ng=c.createGain(); ng.gain.setValueAtTime(0.25,t0);
-  noise.connect(ng).connect(filt);
-  noise.start(t0);
+  if(!freq || freq <= 0) return;
+  const sr = c.sampleRate;
+  const period = Math.max(2, Math.round(sr / freq));
+  const nSamples = Math.floor(sr * dur);
+  const buf = c.createBuffer(1, nSamples, sr);
+  const d = buf.getChannelData(0);
+  for(let i=0; i<period; i++) d[i] = (Math.random()*2 - 1) * 0.75;
+  const decay = 0.993;
+  for(let i=period; i<nSamples; i++){
+    d[i] = 0.5 * (d[i - period] + d[i - period - 1]) * decay;
+  }
+  const src = c.createBufferSource();
+  src.buffer = buf;
+  const filt = c.createBiquadFilter();
+  filt.type = "lowpass";
+  filt.frequency.setValueAtTime(3800, t0);
+  filt.frequency.exponentialRampToValueAtTime(700, t0 + dur);
+  const gain = c.createGain();
+  gain.gain.setValueAtTime(0.85, t0);
+  gain.gain.exponentialRampToValueAtTime(0.001, t0 + dur);
+  src.connect(filt).connect(gain).connect(c.destination);
+  src.start(t0);
 }
 
 // ---------- Real chord diagrams (replaces placeholder alert) ----------
@@ -398,7 +417,7 @@ function showChordPopover(name,anchorEl){
 
 // ---------- AI pipeline fetch (needs API_BASE_URL configured) ----------
 const realAudio=document.getElementById("realAudio");
-function notesToSong(title, notes){
+function notesToSong(title, notes, musicalInfo={}){
   const lines=[]; let cur=[];
   notes.forEach((n,i)=>{
     cur.push({word:n.word, pitch:n.pitch, string:n.string, fret:n.fret, start:n.start, end:n.end});
@@ -406,7 +425,14 @@ function notesToSong(title, notes){
     if(gap>0.6 || cur.length>=7){ lines.push(cur); cur=[]; }
   });
   if(cur.length) lines.push(cur);
-  return {title, key:"—", bpm:100, strum:"—", chords:[], lines};
+  return {
+    title,
+    key: musicalInfo.key || "D Major",
+    bpm: musicalInfo.bpm || 100,
+    strum: musicalInfo.strum || "D - D U - U D -",
+    chords: (musicalInfo.chords && musicalInfo.chords.length) ? musicalInfo.chords : ["D", "G", "A", "Bm"],
+    lines
+  };
 }
 function wireAudioSync(song){
   const flat=[]; song.lines.forEach(l=>l.forEach(t=>flat.push(t)));
@@ -545,19 +571,79 @@ document.getElementById("fetchBtn").onclick=async ()=>{
     }
 
     if(!data) throw new Error("timed out waiting for the job to finish");
-    const song = notesToSong(q, data.notes);
+    const song = notesToSong(q, data.notes, {
+      key: data.key,
+      bpm: data.bpm,
+      strum: data.strum,
+      chords: data.chords
+    });
     song.id = data.song_id;
+    song.guitar_audio_url = data.guitar_audio_url;
+    song.orig_audio_url = data.orig_audio_url;
     songs.push(song); refreshAll(); songSel.value = songs.length - 1; currentSong = song;
     renderMeta(); renderChords(); renderNotation();
-    realAudio.src = API_BASE_URL + data.audio_url; realAudio.style.display = "block";
+
+    const audioTrackType = document.getElementById("audioTrackType");
+    audioTrackType.value = "guitar";
+    realAudio.src = API_BASE_URL + (data.guitar_audio_url || data.audio_url);
+    realAudio.style.display = "block";
     wireAudioSync(song);
     status.textContent = data.drive_synced
-      ? "⚡ Processed in seconds & stored to Google Drive! Click Play below to start practicing."
-      : "⚡ Processed in seconds & saved to Local Library! Click Play below to start practicing.";
+      ? "⚡ Tabs & Guitar Audio ready! Chords & Key detected. Click Play below to hear the guitar audio."
+      : "⚡ Tabs & Guitar Audio ready! Chords & Key detected. Click Play below to hear the guitar audio.";
   }catch(e){
     status.textContent = "Fetch failed: " + e.message;
   }
 };
+
+const toggleLyricEditorBtn = document.getElementById("toggleLyricEditorBtn");
+const lyricEditorBox = document.getElementById("lyricEditorBox");
+const applyLyricsBtn = document.getElementById("applyLyricsBtn");
+const audioTrackType = document.getElementById("audioTrackType");
+
+if(toggleLyricEditorBtn){
+  toggleLyricEditorBtn.onclick = () => {
+    lyricEditorBox.style.display = lyricEditorBox.style.display === "none" ? "block" : "none";
+    if(lyricEditorBox.style.display === "block"){
+      document.getElementById("lyricInput").focus();
+    }
+  };
+}
+
+if(applyLyricsBtn){
+  applyLyricsBtn.onclick = () => {
+    const rawText = document.getElementById("lyricInput").value.trim();
+    if(!rawText) return;
+    const words = rawText.split(/\s+/).filter(w => w.length > 0);
+    if(!words.length) return;
+
+    let wIdx = 0;
+    currentSong.lines.forEach(line => {
+      line.forEach(tok => {
+        if(wIdx < words.length){
+          tok.word = words[wIdx++];
+        }
+      });
+    });
+    renderNotation();
+    document.getElementById("apiStatus").textContent = `Applied ${wIdx} lyric words directly above the guitar notes!`;
+  };
+}
+
+if(audioTrackType){
+  audioTrackType.onchange = () => {
+    if(!currentSong) return;
+    const wasPlaying = !realAudio.paused;
+    const currTime = realAudio.currentTime;
+    if(audioTrackType.value === "guitar"){
+      realAudio.src = API_BASE_URL + (currentSong.guitar_audio_url || `/guitar-audio/${currentSong.id}`);
+    } else {
+      realAudio.src = API_BASE_URL + (currentSong.orig_audio_url || `/audio/${currentSong.id}`);
+    }
+    realAudio.currentTime = currTime;
+    if(wasPlaying) realAudio.play();
+  };
+}
 
 // ---------- Song data ----------
 const DEMO_LYRICS=[
@@ -645,13 +731,23 @@ function renderLyrics(){
   lyricsArea.className = notationMode==="chords"?"chordsmode":"";
   lyricsArea.innerHTML="";
   let flatIdx=0;
+  const chords = currentSong.chords || [];
   currentSong.lines.forEach((line,li)=>{
     const row=document.createElement("div"); row.className="line-block";
     const sec = currentSong.sections && currentSong.sections[li];
     if(sec){ const h=document.createElement("div"); h.style.cssText="font-size:.7rem;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--brass-2);margin-bottom:4px"; h.textContent=sec; row.appendChild(h); }
     line.forEach((tok,ti)=>{
       const col=document.createElement("div"); col.className="note-col"; col.dataset.li=li; col.dataset.ti=ti; col.dataset.flat=flatIdx++;
-      col.innerHTML=`<div class="lyric">${tok.word}</div><div class="pitch">${tok.pitch}</div><div class="tabpos">${fretLabel(tok)}</div>`;
+      const chordLabel = (ti === 0 && chords.length) ? `[${chords[li % chords.length]}]` : "";
+      const chordBadge = chordLabel 
+        ? `<div style="font-size:.68rem;font-weight:700;color:var(--brass-2);background:rgba(184,134,59,.15);border:1px solid var(--paper-line);border-radius:3px;padding:1px 4px;margin-bottom:3px">${chordLabel}</div>`
+        : `<div style="height:17px"></div>`;
+      col.innerHTML=`
+        ${chordBadge}
+        <div class="lyric" style="font-weight:700;font-size:1.15rem">${tok.word || tok.pitch}</div>
+        <div class="pitch" style="font-size:.75rem;font-weight:700;color:var(--string-2);margin-top:2px">${tok.pitch}</div>
+        <div class="tabpos" style="font-size:.7rem">${fretLabel(tok)}</div>
+      `;
       col.onclick=()=>playNote(tok,col);
       row.appendChild(col);
     });

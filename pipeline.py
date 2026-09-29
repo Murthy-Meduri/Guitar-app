@@ -454,12 +454,128 @@ def optimize_fretting(notes: List[AlignedNote]) -> List[FretPosition]:
     return [FretPosition(string_index=si, fret=fret) for si, fret in path]
 
 
+PITCH_CLASSES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"]
+MAJOR_PROFILE = np.array([6.35, 2.23, 3.48, 2.33, 4.38, 4.09, 2.52, 5.19, 2.39, 3.66, 2.29, 2.88])
+MINOR_PROFILE = np.array([6.33, 2.68, 3.52, 5.38, 2.60, 3.53, 2.54, 4.75, 3.98, 2.69, 3.34, 3.17])
+SARGAM_NAMES = ["Sa", "re", "Re", "ga", "Ga", "ma", "Ma", "Pa", "dha", "Dha", "ni", "Ni"]
+
+
+def estimate_key_and_chords(y: np.ndarray, sr: int) -> dict:
+    """Analyze key, BPM tempo, strumming pattern, and primary chords in <0.3s."""
+    import librosa
+
+    # 1. BPM
+    try:
+        tempo, _ = librosa.beat.beat_track(y=y, sr=sr)
+        bpm = int(round(float(np.mean(tempo)))) if tempo > 0 else 104
+    except Exception:
+        bpm = 104
+
+    # 2. Key estimation via Krumhansl-Schmuckler chroma correlation
+    chroma = librosa.feature.chroma_stft(y=y, sr=sr)
+    chroma_mean = np.mean(chroma, axis=1)
+
+    best_corr = -999.0
+    best_key = "D Major"
+    root_idx = 2
+    is_major = True
+
+    for i in range(12):
+        rotated = np.roll(chroma_mean, -i)
+        corr_maj = float(np.corrcoef(rotated, MAJOR_PROFILE)[0, 1])
+        if corr_maj > best_corr:
+            best_corr = corr_maj
+            best_key = f"{PITCH_CLASSES[i]} Major"
+            root_idx = i
+            is_major = True
+
+        corr_min = float(np.corrcoef(rotated, MINOR_PROFILE)[0, 1])
+        if corr_min > best_corr:
+            best_corr = corr_min
+            best_key = f"{PITCH_CLASSES[i]} Minor"
+            root_idx = i
+            is_major = False
+
+    # 3. Diatonic chords for detected key
+    if is_major:
+        offsets = [0, 2, 4, 5, 7, 9]
+        qualities = ["", "m", "m", "", "", "m"]
+    else:
+        offsets = [0, 3, 5, 7, 8, 10]
+        qualities = ["m", "", "m", "m", "", ""]
+
+    primary_chords = [f"{PITCH_CLASSES[(root_idx + off) % 12]}{q}" for off, q in zip(offsets[:4], qualities[:4])]
+
+    # 4. Strumming pattern based on tempo
+    if bpm < 90:
+        strum = "D - D U - U D -"
+    elif bpm <= 125:
+        strum = "D - D U - U D U"
+    else:
+        strum = "D D U U D U"
+
+    return {
+        "key": best_key,
+        "root_idx": root_idx,
+        "bpm": bpm,
+        "strum": strum,
+        "chords": primary_chords
+    }
+
+
+def synthesize_guitar_audio(notes: List[dict], total_duration: float, out_wav_path: str, sr: int = 22050):
+    """Synthesize authentic acoustic guitar pluck audio for generated tabs using Karplus-Strong physical modeling."""
+    import soundfile as sf
+
+    total_samples = max(int(sr * (total_duration + 2.0)), sr * 2)
+    track = np.zeros(total_samples, dtype=np.float32)
+
+    STRING_OPENS = [82.41, 110.00, 146.83, 196.00, 246.94, 329.63]
+
+    for n in notes:
+        st = float(n.get("start", 0.0))
+        dur = max(0.4, min(2.5, float(n.get("end", st + 0.5)) - st))
+        s_idx = max(0, min(5, int(n.get("string", 2))))
+        fret = max(0, min(15, int(n.get("fret", 0))))
+        freq = STRING_OPENS[s_idx] * (2.0 ** (fret / 12.0))
+
+        delay_len = max(2, int(round(sr / freq)))
+        noise = np.random.uniform(-0.7, 0.7, delay_len).astype(np.float32)
+        n_samples = int(sr * dur)
+        buf = np.zeros(n_samples, dtype=np.float32)
+        buf[:delay_len] = noise
+        decay = 0.993
+        for i in range(delay_len, n_samples):
+            buf[i] = 0.5 * (buf[i - delay_len] + buf[i - delay_len - 1]) * decay
+
+        start_samp = int(st * sr)
+        end_samp = start_samp + n_samples
+        if end_samp > total_samples:
+            end_samp = total_samples
+            buf = buf[:end_samp - start_samp]
+        track[start_samp:end_samp] += buf * 0.45
+
+    max_val = float(np.max(np.abs(track)))
+    if max_val > 0.01:
+        track = (track / max_val) * 0.88
+
+    sf.write(out_wav_path, track, sr)
+    return out_wav_path
+
+
 # ---------------------------------------------------------------------------
 # Orchestration
 # ---------------------------------------------------------------------------
 
-def process_song_from_audio(wav_path: str, language: Optional[str] = None, progress_cb: Optional[Callable[[str], None]] = None) -> dict:
+def process_song_from_audio(wav_path: str, language: Optional[str] = None, progress_cb: Optional[Callable[[str], None]] = None, target_guitar_wav: Optional[str] = None) -> dict:
     """Analyze audio directly in ~1-2 seconds with zero memory overhead."""
+    import librosa
+    y, sr = librosa.load(wav_path, sr=16000, mono=True, duration=75.0)
+
+    if progress_cb:
+        progress_cb("Analyzing key, tempo, and guitar chords...")
+
+    musical_info = estimate_key_and_chords(y, sr)
     pitch_events = detect_pitch(wav_path, progress_cb=progress_cb)
 
     if progress_cb:
@@ -468,20 +584,43 @@ def process_song_from_audio(wav_path: str, language: Optional[str] = None, progr
     aligned = align([], pitch_events)
     frets = optimize_fretting(aligned)
 
+    root_idx = musical_info.get("root_idx", 0)
     notes_out = []
+    total_dur = 0.0
+
     for note, pos in zip(aligned, frets):
+        semitone_diff = (PITCH_CLASSES.index(note.note_name) - root_idx) % 12 if note.note_name in PITCH_CLASSES else 0
+        sargam_syllable = SARGAM_NAMES[semitone_diff]
+
         notes_out.append({
-            "word": note.word,
+            "word": sargam_syllable,
             "start": note.start,
             "end": note.end,
             "pitch": note.note_name,
             "string": pos.string_index,   # 0=low E ... 5=high E
             "fret": pos.fret,
         })
-    return {"source_wav": wav_path, "notes": notes_out}
+        if note.end > total_dur:
+            total_dur = note.end
+
+    if progress_cb:
+        progress_cb("Synthesizing authentic guitar audio track...")
+
+    guitar_wav_path = target_guitar_wav or wav_path.replace(".wav", "_guitar.wav")
+    synthesize_guitar_audio(notes_out, total_dur, guitar_wav_path)
+
+    return {
+        "source_wav": wav_path,
+        "guitar_wav": guitar_wav_path,
+        "key": musical_info["key"],
+        "bpm": musical_info["bpm"],
+        "strum": musical_info["strum"],
+        "chords": musical_info["chords"],
+        "notes": notes_out
+    }
 
 
-def process_song(youtube_url_or_query: str, language: Optional[str] = None, target_audio_path: Optional[str] = None) -> dict:
+def process_song(youtube_url_or_query: str, language: Optional[str] = None, target_audio_path: Optional[str] = None, target_guitar_path: Optional[str] = None) -> dict:
     with tempfile.TemporaryDirectory() as tmp:
         wav_path = retrieve_audio(youtube_url_or_query, tmp)
         if target_audio_path:
@@ -490,5 +629,5 @@ def process_song(youtube_url_or_query: str, language: Optional[str] = None, targ
         else:
             persisted_wav = wav_path
 
-        return process_song_from_audio(persisted_wav, language=language)
+        return process_song_from_audio(persisted_wav, language=language, target_guitar_wav=target_guitar_path)
 

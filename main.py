@@ -141,15 +141,21 @@ def _run_job(job_id: str, query: str, language: str | None):
     job_dir = os.path.join(JOBS_DIR, job_id)
     os.makedirs(job_dir, exist_ok=True)
     try:
-        persisted_audio = os.path.join(job_dir, "audio.wav")
-        result = process_song(query, language=language, target_audio_path=persisted_audio)
+        guitar_audio = os.path.join(job_dir, "guitar.wav")
+        result = process_song(query, language=language, target_audio_path=persisted_audio, target_guitar_path=guitar_audio)
         title = query.split("/")[-1].split("?")[0] if "http" in query else query
         drive_res = drive_service.save_song(job_id, title=title, song_data=result, query_or_video_id=query)
         JOBS[job_id]["status"] = "done"
         JOBS[job_id]["step"] = "Complete"
         JOBS[job_id]["result"] = {
+            "key": result.get("key", "D Major"),
+            "bpm": result.get("bpm", 100),
+            "strum": result.get("strum", "D - D U - U D -"),
+            "chords": result.get("chords", []),
             "notes": result["notes"],
-            "audio_url": f"/audio/{job_id}",
+            "guitar_audio_url": f"/guitar-audio/{job_id}",
+            "audio_url": f"/guitar-audio/{job_id}",
+            "orig_audio_url": f"/audio/{job_id}",
             "song_id": job_id,
             "title": title,
             "drive_synced": drive_res.get("drive_synced", False)
@@ -169,6 +175,7 @@ def _run_audio_job(job_id: str, raw_audio_path: str, language: str | None, query
     job_dir = os.path.join(JOBS_DIR, job_id)
     os.makedirs(job_dir, exist_ok=True)
     persisted_audio = os.path.join(job_dir, "audio.wav")
+    guitar_audio = os.path.join(job_dir, "guitar.wav")
     try:
         # Convert raw uploaded audio (mp3, webm, m4a, etc.) directly to 16000Hz mono wav for zero-overhead YIN analysis
         cmd = ["ffmpeg", "-y", "-i", raw_audio_path, "-ar", "16000", "-ac", "1", persisted_audio]
@@ -180,14 +187,20 @@ def _run_audio_job(job_id: str, raw_audio_path: str, language: str | None, query
             JOBS[job_id]["step"] = msg
             _save_job(job_id)
 
-        result = process_song_from_audio(persisted_audio, language=language, progress_cb=progress_cb)
+        result = process_song_from_audio(persisted_audio, language=language, progress_cb=progress_cb, target_guitar_wav=guitar_audio)
         title = query or f"Song {job_id[:6]}"
         drive_res = drive_service.save_song(job_id, title=title, song_data=result, query_or_video_id=query)
         JOBS[job_id]["status"] = "done"
         JOBS[job_id]["step"] = "Complete"
         JOBS[job_id]["result"] = {
+            "key": result.get("key", "D Major"),
+            "bpm": result.get("bpm", 100),
+            "strum": result.get("strum", "D - D U - U D -"),
+            "chords": result.get("chords", []),
             "notes": result["notes"],
-            "audio_url": f"/audio/{job_id}",
+            "guitar_audio_url": f"/guitar-audio/{job_id}",
+            "audio_url": f"/guitar-audio/{job_id}",
+            "orig_audio_url": f"/audio/{job_id}",
             "song_id": job_id,
             "title": title,
             "drive_synced": drive_res.get("drive_synced", False)
@@ -344,6 +357,16 @@ def get_audio(job_id: str):
     path = os.path.join(JOBS_DIR, job_id, "audio.wav")
     if not os.path.exists(path):
         raise HTTPException(404, "audio not found")
+    return FileResponse(path, media_type="audio/wav")
+
+
+@app.get("/guitar-audio/{job_id}")
+def get_guitar_audio(job_id: str):
+    path = os.path.join(JOBS_DIR, job_id, "guitar.wav")
+    if not os.path.exists(path):
+        path = os.path.join(JOBS_DIR, job_id, "audio.wav")
+    if not os.path.exists(path):
+        raise HTTPException(404, "guitar audio not found")
     return FileResponse(path, media_type="audio/wav")
 
 
