@@ -229,9 +229,7 @@ footer{text-align:center;font-size:.72rem;opacity:.5;margin-top:30px}
     </select>
     <select id="songSel"></select>
     <button class="btn ghost small" id="skipIntroBtn" style="border-color:var(--brass);color:var(--brass-2);font-weight:600" title="Skip to the main vocal singing melody">⏩ Skip to Chorus</button>
-    <button class="btn ghost small" id="accompToggleBtn" style="border-color:var(--brass);color:var(--brass-2);font-weight:600" title="Toggle acoustic fingerstyle thumb bass & chord rhythm accompaniment">🎸 Fingerstyle Rhythm: ON</button>
-    <label class="small-label" style="display:inline-flex;align-items:center;gap:4px;margin:0 2px">🎸 Rhythm <input type="range" id="rhythmVolSlider" min="0" max="100" value="65" style="width:55px;accent-color:var(--brass)"></label>
-    <label class="small-label" style="display:inline-flex;align-items:center;gap:4px;margin:0 2px">🎵 Solo <input type="range" id="soloVolSlider" min="0" max="100" value="90" style="width:55px;accent-color:var(--brass)"></label>
+    <button class="btn ghost small" id="accompToggleBtn" style="border-color:var(--brass);color:var(--brass-2);font-weight:600" title="Toggle acoustic fingerstyle thumb bass accompaniment">🎸 Thumb Bass: ON</button>
     <button class="btn ghost small" id="loopABtn">Loop A</button>
     <button class="btn ghost small" id="loopBBtn">Loop B</button>
     <button class="btn ghost small" id="loopToggleBtn">Loop: off</button>
@@ -466,17 +464,15 @@ function getReverbNode(c){
   }
 }
 
-let rhythmVolumeScale = 0.65;
-let soloLeadVolumeScale = 0.90;
-
-function pluck(freq, dur=1.2, time=0, isBass=false, vol=0.85, isRhythm=false){
+function pluck(freq, dur=1.6, time=0, isBass=false, vol=0.85){
   const c=ctx();
   if(!c || !freq || freq <= 0 || isNaN(freq)) return;
   if(c.state === "suspended") c.resume();
   const t0 = c.currentTime + Math.max(0.005, time);
   const sr = c.sampleRate;
   const period = Math.max(2, Math.round(sr / freq));
-  const nSamples = Math.floor(sr * Math.max(0.25, Math.min(3.5, dur)));
+  const actualDur = Math.max(1.1, Math.min(3.5, dur));
+  const nSamples = Math.floor(sr * actualDur);
   const buf = c.createBuffer(1, nSamples, sr);
   const d = buf.getChannelData(0);
 
@@ -484,12 +480,12 @@ function pluck(freq, dur=1.2, time=0, isBass=false, vol=0.85, isRhythm=false){
   const pickPos = Math.max(1, Math.round(period * (isBass ? 0.32 : 0.22)));
   for(let i=0; i<period; i++){
     const tri = i < pickPos ? (i / pickPos) : ((period - i) / Math.max(1, period - pickPos));
-    const noise = (Math.random() * 2 - 1) * (isBass ? 0.25 : 0.40);
-    d[i] = (tri * (isBass ? 0.80 : 0.65) + noise) * 0.85;
+    const noise = (Math.random() * 2 - 1) * (isBass ? 0.22 : 0.35);
+    d[i] = (tri * (isBass ? 0.80 : 0.70) + noise) * 0.85;
   }
 
-  // Realistic acoustic lead decay (warm bass sustain, fast treble ring)
-  const decay = isBass ? 0.9962 : Math.min(0.996, 0.991 + 0.005 * (200.0 / Math.max(120.0, freq)));
+  // Realistic acoustic lead decay (warm bass sustain, singing treble ring)
+  const decay = isBass ? 0.9965 : Math.min(0.9965, 0.991 + 0.0055 * (200.0 / Math.max(120.0, freq)));
   for(let i=period; i<nSamples; i++){
     const prev = (i - period - 1 >= 0) ? d[i - period - 1] : d[period - 1];
     d[i] = 0.5 * (d[i - period] + prev) * decay;
@@ -503,10 +499,10 @@ function pluck(freq, dur=1.2, time=0, isBass=false, vol=0.85, isRhythm=false){
   filt.type = "lowpass";
   if(isBass){
     filt.frequency.setValueAtTime(1400, t0);
-    filt.frequency.exponentialRampToValueAtTime(340, t0 + dur);
+    filt.frequency.exponentialRampToValueAtTime(320, t0 + actualDur);
   } else {
-    filt.frequency.setValueAtTime(Math.min(4800, freq * 7), t0);
-    filt.frequency.exponentialRampToValueAtTime(Math.max(450, freq * 1.4), t0 + dur);
+    filt.frequency.setValueAtTime(Math.min(5000, freq * 7), t0);
+    filt.frequency.exponentialRampToValueAtTime(Math.max(450, freq * 1.5), t0 + actualDur);
   }
 
   // Acoustic guitar soundboard & air cavity resonance
@@ -523,10 +519,10 @@ function pluck(freq, dur=1.2, time=0, isBass=false, vol=0.85, isRhythm=false){
   topRes.gain.value = 3.5;
 
   const gain = c.createGain();
-  const effVol = (isBass || isRhythm) ? (vol * rhythmVolumeScale) : (vol * soloLeadVolumeScale);
+  const effVol = isBass ? (vol * 0.50) : (vol * 0.95);
   gain.gain.setValueAtTime(0.0001, t0);
-  gain.gain.linearRampToValueAtTime(effVol, t0 + 0.004);
-  gain.gain.linearRampToValueAtTime(0.0001, t0 + dur);
+  gain.gain.linearRampToValueAtTime(effVol, t0 + 0.005);
+  gain.gain.exponentialRampToValueAtTime(0.0001, t0 + actualDur);
 
   src.connect(filt).connect(bodyRes).connect(topRes).connect(gain);
   gain.connect(c.destination);
@@ -2945,79 +2941,28 @@ const CHORD_STRUM_NOTES = {
 };
 
 let fingerstyleAccompanimentEnabled = true;
-let rhythmTimer = null;
-let currentRhythmChord = "Cm";
 
-function playChordBass(chordName, vol = 0.42){
+function playChordBass(chordName, vol = 0.45){
   if(!chordName || !fingerstyleAccompanimentEnabled) return;
   const base = chordName.replace(/\[|\]/g, "").trim();
   const freq = CHORD_BASS_FREQS[base] || CHORD_BASS_FREQS[base.replace(/m|7|maj7|sus\d/g, "")] || 110.0;
-  pluck(freq, 2.0, 0, true, vol, true);
+  pluck(freq, 2.2, 0, true, vol);
 }
 
-function playChordBassAlt(chordName, vol = 0.30){
-  if(!fingerstyleAccompanimentEnabled) return;
-  const base = (chordName || "Cm").replace(/\[|\]/g, "").trim();
-  const freq = CHORD_BASS_FREQS[base] || 110.0;
-  pluck(freq * 1.5, 1.4, 0, true, vol, true);
-}
-
-function playChordStrum(chordName, vol = 0.22, isUpstroke = false){
+function playChordStrum(chordName, vol = 0.22){
   if(!fingerstyleAccompanimentEnabled) return;
   const base = (chordName || "Cm").replace(/\[|\]/g, "").trim();
   const notes = CHORD_STRUM_NOTES[base] || CHORD_STRUM_NOTES[base.replace(/m|7|maj7|sus\d/g, "")] || CHORD_STRUM_NOTES["Cm"];
-  const list = isUpstroke ? [...notes].reverse() : notes;
-  list.forEach((n, idx) => {
+  notes.forEach((n, idx) => {
     setTimeout(() => {
       if(playing && !stopRequested){
-        pluck(freqFor(n.pitch, n.string, n.fret), 0.65, 0, false, vol, true);
+        pluck(freqFor(n.pitch, n.string, n.fret), 0.85, 0, false, vol);
       }
-    }, idx * 18);
+    }, idx * 24);
   });
 }
 
-function startAcousticRhythm(bpm, songChords){
-  stopAcousticRhythm();
-  if(!fingerstyleAccompanimentEnabled) return;
-  const speed = parseFloat(document.getElementById("speedSel").value) || 1.0;
-  const beatMs = ((60 / (bpm || 99)) / speed) * 1000;
-  const chords = songChords && songChords.length ? songChords : ["Cm", "Bb", "Ab", "Gm"];
-  let step = 0;
-  let chIdx = 0;
-
-  function rhythmStep(){
-    if(!playing || stopRequested) return;
-    const activeCh = currentRhythmChord || chords[chIdx % chords.length];
-    const beatInBar = step % 4;
-
-    if(beatInBar === 0){
-      playChordBass(activeCh, 0.45);
-    } else if(beatInBar === 1){
-      playChordStrum(activeCh, 0.24, false);
-    } else if(beatInBar === 2){
-      playChordBassAlt(activeCh, 0.32);
-    } else if(beatInBar === 3){
-      playChordStrum(activeCh, 0.20, true);
-      chIdx++;
-    }
-
-    step++;
-    if(playing && !stopRequested){
-      rhythmTimer = setTimeout(rhythmStep, beatMs);
-    }
-  }
-
-  rhythmStep();
-}
-
-function stopAcousticRhythm(){
-  if(rhythmTimer){
-    clearTimeout(rhythmTimer);
-    rhythmTimer = null;
-  }
-}
-
-function playNote(tok, col, flatIdx, noteDur=1.2){
+function playNote(tok, col, flatIdx, noteDur=1.6){
   const c = ctx();
   if(c && c.state === "suspended"){
     try { c.resume(); } catch(e){}
@@ -3033,8 +2978,9 @@ function playNote(tok, col, flatIdx, noteDur=1.2){
   }
   highlightFret(tok.string, tok.fret);
 
-  if(tok.chord){
-    currentRhythmChord = tok.chord;
+  // When a chord change / downbeat occurs on a singing syllable, thumb plucks the acoustic bass root!
+  if(fingerstyleAccompanimentEnabled && tok.chord){
+    playChordBass(tok.chord, 0.45);
   }
 
   // Realistic Acoustic Guitar Slide Articulation
@@ -3042,20 +2988,20 @@ function playNote(tok, col, flatIdx, noteDur=1.2){
     const p = tok.slide.split("/");
     const f1 = parseInt(p[0]), f2 = parseInt(p[1]);
     if(!isNaN(f1) && !isNaN(f2)){
-      pluck(freqFor(tok.pitch, tok.string, f1), 0.12, 0, false, 0.85);
-      setTimeout(() => pluck(freqFor(tok.pitch, tok.string, f2), Math.max(0.45, noteDur - 0.12), 0, false, 0.90), 80);
+      pluck(freqFor(tok.pitch, tok.string, f1), 0.15, 0, false, 0.85);
+      setTimeout(() => pluck(freqFor(tok.pitch, tok.string, f2), Math.max(0.8, noteDur - 0.15), 0, false, 0.95), 100);
       return;
     }
   } else if(tok.slide && tok.slide.includes("\\")){
     const p = tok.slide.split("\\");
     const f1 = parseInt(p[0]), f2 = parseInt(p[1]);
     if(!isNaN(f1) && !isNaN(f2)){
-      pluck(freqFor(tok.pitch, tok.string, f1), 0.12, 0, false, 0.85);
-      setTimeout(() => pluck(freqFor(tok.pitch, tok.string, f2), Math.max(0.45, noteDur - 0.12), 0, false, 0.90), 80);
+      pluck(freqFor(tok.pitch, tok.string, f1), 0.15, 0, false, 0.85);
+      setTimeout(() => pluck(freqFor(tok.pitch, tok.string, f2), Math.max(0.8, noteDur - 0.15), 0, false, 0.95), 100);
       return;
     }
   }
-  pluck(freqFor(tok.pitch, tok.string, tok.fret), noteDur, 0, false, 0.90);
+  pluck(freqFor(tok.pitch, tok.string, tok.fret), noteDur, 0, false, 0.95);
 }
 
 // fretboard — real vector neck: nut, fret wires, inlay dots, tapered strings
@@ -3115,8 +3061,7 @@ async function playSequence(startIdx,endIdx){
   if(startIdx==null) startIdx=0;
   if(endIdx==null) endIdx=flat.length-1;
   const speed=parseFloat(document.getElementById("speedSel").value)||1.0;
-  currentRhythmChord = currentSong.chords && currentSong.chords.length ? currentSong.chords[0] : "Cm";
-  startAcousticRhythm(currentSong.bpm || 99, currentSong.chords);
+  const beat=(60/(currentSong.bpm||99))/speed;
 
   do{
     for(let i=startIdx;i<=endIdx && !stopRequested;i++){
@@ -3125,24 +3070,33 @@ async function playSequence(startIdx,endIdx){
       const col=lyricsArea.querySelector(`.note-col[data-flat="${i}"]`);
 
       // Expressive dynamic timing matching real song tempo and phrasing
-      let noteDur = 1.0;
-      let sleepMs = beat * 1000 * 0.92;
+      let noteDur = 1.6;
+      let sleepMs = beat * 1000 * 0.90;
 
       if(tok.start != null && nextTok && nextTok.start != null && nextTok.start > tok.start){
         const delta = (nextTok.start - tok.start) / speed;
-        sleepMs = Math.max(75, Math.min(3500, delta * 1000));
-        noteDur = Math.max(0.25, (tok.end && tok.end > tok.start ? (tok.end - tok.start) : delta) / speed);
+        sleepMs = Math.max(90, Math.min(3000, delta * 1000));
+        noteDur = Math.max(1.0, delta * 1.3);
+
+        // Subtle fingerstyle acoustic chord fill during vocal pauses (>0.75s)
+        if(fingerstyleAccompanimentEnabled && delta > 0.75){
+          setTimeout(() => {
+            if(playing && !stopRequested){
+              const ch = tok.chord || (currentSong.chords && currentSong.chords[0]) || "Cm";
+              playChordStrum(ch, 0.18);
+            }
+          }, delta * 1000 * 0.50);
+        }
       } else if(tok.end != null && tok.start != null && tok.end > tok.start){
         const dur = (tok.end - tok.start) / speed;
-        sleepMs = Math.max(75, dur * 1000);
-        noteDur = dur;
+        sleepMs = Math.max(120, dur * 1000);
+        noteDur = Math.max(1.0, dur * 1.3);
       }
 
       playNote(tok, col, i, noteDur);
       await new Promise(r=>setTimeout(r, sleepMs));
     }
   } while(loopActive && !stopRequested && !(realAudio.src && realAudio.style.display!=="none"));
-  stopAcousticRhythm();
   playing=false;
 }
 
@@ -3171,7 +3125,6 @@ document.getElementById("playBtn").onclick=async ()=>{
 document.getElementById("stopBtn").onclick=()=>{
   stopRequested=true;
   playing=false;
-  stopAcousticRhythm();
   if(realAudio.src) realAudio.pause();
   document.querySelectorAll(".tab-note-badge.active").forEach(el=>el.classList.remove("active"));
   document.querySelectorAll(".tab-note-group.active").forEach(el=>el.classList.remove("active"));
@@ -3192,7 +3145,6 @@ if(skipIntroBtn){
     }
     stopRequested = true;
     playing = false;
-    stopAcousticRhythm();
     if(realAudio.src && realAudio.style.display !== "none"){
       realAudio.currentTime = flat[targetIdx] ? (flat[targetIdx].start || 0) : 0;
       realAudio.play();
@@ -3301,13 +3253,8 @@ const accompBtn = document.getElementById("accompToggleBtn");
 if(accompBtn){
   accompBtn.onclick = () => {
     fingerstyleAccompanimentEnabled = !fingerstyleAccompanimentEnabled;
-    accompBtn.textContent = "🎸 Fingerstyle Rhythm: " + (fingerstyleAccompanimentEnabled ? "ON" : "OFF");
+    accompBtn.textContent = "🎸 Thumb Bass: " + (fingerstyleAccompanimentEnabled ? "ON" : "OFF");
     accompBtn.style.color = fingerstyleAccompanimentEnabled ? "var(--brass-2)" : "var(--muted)";
-    if(!fingerstyleAccompanimentEnabled){
-      stopAcousticRhythm();
-    } else if(playing){
-      startAcousticRhythm(currentSong.bpm || 99, currentSong.chords);
-    }
   };
 }
 
