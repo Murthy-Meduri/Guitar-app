@@ -238,12 +238,14 @@ def detect_pitch_fast(wav_path: str, progress_cb: Optional[Callable[[str], None]
 
     # 2. Fast YIN pitch tracking
     hop_length = 384
-    fmin = float(librosa.note_to_hz('E2'))   # Low E string (~82 Hz)
-    fmax = float(librosa.note_to_hz('G5'))   # High guitar range (~784 Hz)
+    # Focus strictly on vocal lead melody range (C3 ~130.8 Hz to A5 ~880 Hz)
+    # This rejects bass guitar tracks (80-120 Hz) and kick drum rumble
+    fmin = float(librosa.note_to_hz('C3'))
+    fmax = float(librosa.note_to_hz('A5'))
     f0 = librosa.yin(
         y, fmin=fmin, fmax=fmax, sr=sr,
         frame_length=2048, hop_length=hop_length,
-        trough_threshold=0.18
+        trough_threshold=0.20
     )
 
     rms = librosa.feature.rms(y=y, frame_length=2048, hop_length=hop_length)[0]
@@ -439,16 +441,13 @@ def optimize_fretting(notes: List[AlignedNote]) -> List[FretPosition]:
 
     candidates: List[List[tuple]] = []
     for note in notes:
-        pc_name = note.note_name
-        if pc_name in NOTE_NAMES:
-            pc = NOTE_NAMES.index(pc_name)
-            # Center melody in natural lead guitar solo range: G3 to G5 (MIDI 55 to 79)
-            if pc in [7, 8, 9, 10, 11]:  # G, G#, A, A#, B -> Octave 3 (MIDI 55-59)
-                target_midi = 12 * 3 + pc + 12
-            else:  # C, C#, D, D#, E, F, F# -> Octave 4 (MIDI 60-66)
-                target_midi = 12 * 4 + pc + 12
-        else:
-            target_midi = note_to_midi(note.note_name, note.octave)
+        midi = note_to_midi(note.note_name, getattr(note, "octave", 4) or 4)
+        # Transpose gracefully into standard lead guitar solo range (MIDI 50 / D3 to 76 / E5)
+        while midi < 50:
+            midi += 12
+        while midi > 76:
+            midi -= 12
+        target_midi = midi
 
         opts = []
         for si in [4, 3, 5, 2, 1, 0]:  # Prioritize B, G, high e, and D strings for solo melody
@@ -575,11 +574,14 @@ def synthesize_guitar_audio(notes: List[dict], total_duration: float, out_wav_pa
         freq = STRING_OPENS[s_idx] * (2.0 ** (fret / 12.0))
 
         delay_len = max(2, int(round(sr / freq)))
-        noise = np.random.uniform(-0.8, 0.8, delay_len).astype(np.float32)
-        n_samples = int(sr * dur)
+        pick_pos = max(1, int(round(delay_len * 0.22)))
+        noise = np.random.uniform(-0.45, 0.45, delay_len).astype(np.float32)
+        tri = np.zeros(delay_len, dtype=np.float32)
+        for ti in range(delay_len):
+            tri[ti] = (ti / pick_pos) if ti < pick_pos else ((delay_len - ti) / max(1, delay_len - pick_pos))
         buf = np.zeros(n_samples, dtype=np.float32)
-        buf[:delay_len] = noise
-        decay = 0.994  # realistic acoustic sustain
+        buf[:delay_len] = (tri * 0.65 + noise) * 0.8
+        decay = min(0.996, 0.991 + 0.005 * (200.0 / max(120.0, freq)))  # natural frequency-dependent decay
         for i in range(delay_len, n_samples):
             prev = buf[i - delay_len - 1] if (i - delay_len - 1 >= 0) else buf[delay_len - 1]
             buf[i] = 0.5 * (buf[i - delay_len] + prev) * decay
