@@ -692,14 +692,12 @@ document.getElementById("fetchBtn").onclick=async ()=>{
     songs.push(song); refreshAll(); songSel.value = songs.length - 1; currentSong = song;
     renderMeta(); renderChords(); renderNotation();
 
-    const audioTrackType = document.getElementById("audioTrackType");
-    audioTrackType.value = "guitar";
     realAudio.src = API_BASE_URL + (data.guitar_audio_url || data.audio_url);
     realAudio.style.display = "block";
     wireAudioSync(song);
     status.textContent = data.drive_synced
-      ? "⚡ Tabs & Guitar Audio ready! Chords & Key detected. Click Play below to hear the guitar audio."
-      : "⚡ Tabs & Guitar Audio ready! Chords & Key detected. Click Play below to hear the guitar audio.";
+      ? "⚡ Solo Lead Guitar Audio ready! Chords & Key detected. Tap ▶ Play below."
+      : "⚡ Solo Lead Guitar Audio ready! Chords & Key detected. Tap ▶ Play below.";
   }catch(e){
     status.textContent = "Fetch failed: " + e.message;
   }
@@ -708,7 +706,6 @@ document.getElementById("fetchBtn").onclick=async ()=>{
 const toggleLyricEditorBtn = document.getElementById("toggleLyricEditorBtn");
 const lyricEditorBox = document.getElementById("lyricEditorBox");
 const applyLyricsBtn = document.getElementById("applyLyricsBtn");
-const audioTrackType = document.getElementById("audioTrackType");
 
 if(toggleLyricEditorBtn){
   toggleLyricEditorBtn.onclick = () => {
