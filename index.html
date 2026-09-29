@@ -441,6 +441,24 @@ function freqFor(pitchName, si, fret){
   const midi = openMidi+fret;
   return 440*Math.pow(2,(midi-57)/12);
 }
+let masterLimiter = null;
+function getMasterOutput(c){
+  if(masterLimiter) return masterLimiter;
+  try {
+    const comp = c.createDynamicsCompressor();
+    comp.threshold.value = -3.0; // Transparent acoustic limiter
+    comp.knee.value = 6.0;
+    comp.ratio.value = 12.0;
+    comp.attack.value = 0.003;
+    comp.release.value = 0.25;
+    comp.connect(c.destination);
+    masterLimiter = comp;
+    return masterLimiter;
+  } catch(e) {
+    return c.destination;
+  }
+}
+
 let reverbConvolver = null;
 function getReverbNode(c){
   if(reverbConvolver) return reverbConvolver;
@@ -456,8 +474,8 @@ function getReverbNode(c){
     reverbConvolver = c.createConvolver();
     reverbConvolver.buffer = ir;
     const revGain = c.createGain();
-    revGain.gain.value = 0.20;
-    reverbConvolver.connect(revGain).connect(c.destination);
+    revGain.gain.value = 0.18;
+    reverbConvolver.connect(revGain).connect(getMasterOutput(c));
     return reverbConvolver;
   } catch(e) {
     return null;
@@ -519,13 +537,13 @@ function pluck(freq, dur=1.6, time=0, isBass=false, vol=0.85){
   topRes.gain.value = 3.5;
 
   const gain = c.createGain();
-  const effVol = isBass ? (vol * 0.50) : (vol * 0.95);
+  const effVol = isBass ? (vol * 0.42) : (vol * 0.82);
   gain.gain.setValueAtTime(0.0001, t0);
   gain.gain.linearRampToValueAtTime(effVol, t0 + 0.005);
   gain.gain.exponentialRampToValueAtTime(0.0001, t0 + actualDur);
 
   src.connect(filt).connect(bodyRes).connect(topRes).connect(gain);
-  gain.connect(c.destination);
+  gain.connect(getMasterOutput(c));
   const rev = getReverbNode(c);
   if(rev) gain.connect(rev);
 
@@ -3138,7 +3156,7 @@ if(skipIntroBtn){
     let targetIdx = 0;
     for(let i=0; i<flat.length; i++){
       const w = (flat[i].word || "").toLowerCase();
-      if(w.includes("oh") || w.includes("pri") || w.includes("naa") || (flat[i].start && flat[i].start >= 4.0)){
+      if((w.includes("oh") || w.includes("pri")) && i >= 4){
         targetIdx = i;
         break;
       }
