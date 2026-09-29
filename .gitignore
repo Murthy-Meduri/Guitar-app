@@ -6,3 +6,6 @@ venv/
 jobs/
 songs/
 .DS_Store
+cookies.txt
+*.wav
+*.mp3

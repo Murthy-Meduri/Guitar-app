@@ -249,9 +249,9 @@ def detect_pitch_fast(wav_path: str, progress_cb: Optional[Callable[[str], None]
         trough_threshold=0.15
     )
 
-    # Energy gate to filter out silence and non-tonal segments
+    # Adaptive energy gate to filter out silence and non-tonal segments
     rms = librosa.feature.rms(y=y, frame_length=2048, hop_length=hop_length)[0]
-    rms_thresh = float(np.percentile(rms, 25)) + 0.005
+    rms_thresh = max(0.003, float(np.percentile(rms, 15)))
 
     times = librosa.times_like(f0, sr=sr, hop_length=hop_length)
 
@@ -290,6 +290,17 @@ def detect_pitch_fast(wav_path: str, progress_cb: Optional[Callable[[str], None]
                 ))
             current_note = None
             note_freqs = []
+
+    # Flush final trailing note
+    if current_note and len(note_freqs) >= 3 and len(times) > 0:
+        avg_freq = float(np.median(note_freqs))
+        events.append(PitchEvent(
+            start=round(float(note_start), 3),
+            end=round(float(times[-1]), 3),
+            freq_hz=avg_freq,
+            note_name=freq_to_note(avg_freq),
+            confidence=0.9
+        ))
 
     events.sort(key=lambda e: e.start)
     return events

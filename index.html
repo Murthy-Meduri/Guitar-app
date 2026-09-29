@@ -74,11 +74,27 @@ footer{text-align:center;font-size:.72rem;opacity:.5;margin-top:30px}
 </header>
 
 <div class="creator" style="margin-bottom:14px">
+  <div class="row" style="font-size:0.75rem;justify-content:space-between;border-bottom:1px dashed var(--paper-line);padding-bottom:6px;margin-bottom:8px">
+    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+      <span style="opacity:0.75;font-weight:600">Engine:</span>
+      <select id="backendMode" style="padding:3px 6px;font-size:0.75rem">
+        <option value="local">Local Server (http://127.0.0.1:8000) [Superfast &lt;2s]</option>
+        <option value="cloud">Cloud Server (Render Free Tier)</option>
+        <option value="custom">Custom URL...</option>
+      </select>
+      <input type="text" id="customBackendUrl" placeholder="http://127.0.0.1:8000" style="display:none;width:170px;padding:2px 6px;font-size:0.75rem">
+      <button class="btn ghost small" id="pingBtn" style="padding:2px 8px;font-size:0.7rem">Test Connection</button>
+    </div>
+    <div id="backendPingBadge" style="display:flex;align-items:center;gap:6px;font-size:0.75rem;font-weight:600">
+      <span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:#888" id="pingDot"></span>
+      <span id="pingText" style="color:var(--brass-2)">Detecting engine...</span>
+    </div>
+  </div>
   <div class="row">
     <input type="text" id="ytQuery" placeholder="YouTube URL or song search…" style="flex:1;min-width:200px">
     <button class="btn" id="fetchBtn">Fetch & Analyze</button>
   </div>
-  <div class="small-label" id="apiStatus" style="display:flex;flex-wrap:wrap;gap:8px;align-items:center">No backend configured — set API_BASE_URL in the script to connect the AI pipeline. Using offline demo data below.</div>
+  <div class="small-label" id="apiStatus" style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:6px">Ready. Enter any YouTube song link or title above.</div>
   <audio id="realAudio" style="width:100%;margin-top:8px;display:none" controls></audio>
 </div>
 
@@ -123,9 +139,95 @@ footer{text-align:center;font-size:.72rem;opacity:.5;margin-top:30px}
 </div>
 
 <script>
-const API_BASE_URL = (typeof window !== "undefined" && window.location.hostname === "localhost")
-  ? "http://localhost:8000"
-  : "https://guitar-app-1jxu.onrender.com";
+let API_BASE_URL = localStorage.getItem("guitar_backend_url") || "http://127.0.0.1:8000";
+
+const backendModeSel = document.getElementById("backendMode");
+const customBackendInput = document.getElementById("customBackendUrl");
+const pingDot = document.getElementById("pingDot");
+const pingText = document.getElementById("pingText");
+const pingBtn = document.getElementById("pingBtn");
+
+function getEffectiveApiBaseUrl() {
+  const mode = backendModeSel.value;
+  if(mode === "local") return "http://127.0.0.1:8000";
+  if(mode === "cloud") return "https://guitar-app-1jxu.onrender.com";
+  return customBackendInput.value.trim() || "http://127.0.0.1:8000";
+}
+
+async function testBackend(silent = false) {
+  const url = getEffectiveApiBaseUrl();
+  API_BASE_URL = url;
+  localStorage.setItem("guitar_backend_url", url);
+  if(!silent) {
+    pingDot.style.background = "#b8863b";
+    pingText.textContent = "Connecting...";
+  }
+
+  try {
+    const ctrl = new AbortController();
+    const tid = setTimeout(() => ctrl.abort(), 2000);
+    const r = await fetch(url + "/health", { signal: ctrl.signal });
+    clearTimeout(tid);
+    if(r.ok){
+      const data = await r.json();
+      pingDot.style.background = "#2f6b4f";
+      const isLocal = url.includes("127.0.0.1") || url.includes("localhost");
+      pingText.textContent = isLocal ? "Local Engine Online (Instant <2s)" : "Cloud Engine Online";
+      return true;
+    }
+  } catch(e) {
+    // If local was tested and failed on initial page load, auto-check cloud
+    if(backendModeSel.value === "local" && silent){
+      try {
+        const ctrl2 = new AbortController();
+        const tid2 = setTimeout(() => ctrl2.abort(), 2500);
+        const cr = await fetch("https://guitar-app-1jxu.onrender.com/health", { signal: ctrl2.signal });
+        clearTimeout(tid2);
+        if(cr.ok){
+          backendModeSel.value = "cloud";
+          API_BASE_URL = "https://guitar-app-1jxu.onrender.com";
+          pingDot.style.background = "#2f6b4f";
+          pingText.textContent = "Cloud Engine Online (Local offline)";
+          return false;
+        }
+      } catch(ce){}
+    }
+  }
+
+  pingDot.style.background = "#a4402f";
+  if(url.includes("127.0.0.1") || url.includes("localhost")){
+    pingText.innerHTML = `Local Engine offline. Start server: <code>python -m uvicorn main:app --port 8000</code>`;
+  } else {
+    pingText.textContent = "Backend offline / sleeping (click Test to retry)";
+  }
+  return false;
+}
+
+backendModeSel.onchange = () => {
+  if(backendModeSel.value === "custom"){
+    customBackendInput.style.display = "inline-block";
+    customBackendInput.focus();
+  } else {
+    customBackendInput.style.display = "none";
+  }
+  testBackend(false);
+};
+
+customBackendInput.onchange = () => testBackend(false);
+pingBtn.onclick = () => testBackend(false);
+
+// Initialize backend mode based on saved preference or default to local
+if(API_BASE_URL.includes("onrender.com")){
+  backendModeSel.value = "cloud";
+} else if(API_BASE_URL.includes("127.0.0.1") || API_BASE_URL.includes("localhost")){
+  backendModeSel.value = "local";
+} else {
+  backendModeSel.value = "custom";
+  customBackendInput.value = API_BASE_URL;
+  customBackendInput.style.display = "inline-block";
+}
+
+testBackend(true);
 
 // ---------- Music theory / tuning ----------
 const NOTE_ORDER=["C","C#","D","D#","E","F","F#","G","G#","A","A#","B"];

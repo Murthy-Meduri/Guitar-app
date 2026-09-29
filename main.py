@@ -63,6 +63,20 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+@app.middleware("http")
+async def add_private_network_header(request: Request, call_next):
+    if request.method == "OPTIONS":
+        from fastapi.responses import Response
+        res = Response()
+        res.headers["Access-Control-Allow-Origin"] = "*"
+        res.headers["Access-Control-Allow-Methods"] = "*"
+        res.headers["Access-Control-Allow-Headers"] = "*"
+        res.headers["Access-Control-Allow-Private-Network"] = "true"
+        return res
+    response = await call_next(request)
+    response.headers["Access-Control-Allow-Private-Network"] = "true"
+    return response
+
 JOBS_DIR = os.path.join(os.path.dirname(__file__), "jobs")
 SONGS_DIR = os.path.join(os.path.dirname(__file__), "songs")
 os.makedirs(JOBS_DIR, exist_ok=True)
