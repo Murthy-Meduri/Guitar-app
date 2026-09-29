@@ -377,6 +377,17 @@ def get_guitar_audio(job_id: str):
     return FileResponse(path, media_type="audio/wav")
 
 
+@app.get("/audio/{job_id}")
+def get_original_audio(job_id: str):
+    path = os.path.join(JOBS_DIR, job_id, "audio.wav")
+    if not os.path.exists(path):
+        path = os.path.join(JOBS_DIR, job_id, "guitar.wav")
+    if not os.path.exists(path):
+        raise HTTPException(404, "Audio track not found")
+    return FileResponse(path, media_type="audio/wav")
+
+
+
 def _write_midi(notes, out_path, tempo_bpm=100, program=25):
     ticks_per_beat = 480
     sec_per_tick = 60.0 / (max(40, tempo_bpm) * ticks_per_beat)

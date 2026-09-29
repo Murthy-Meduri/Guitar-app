@@ -617,7 +617,14 @@ function wireAudioSync(song){
   realAudio.ontimeupdate=()=>{
     const t=realAudio.currentTime;
     if(loopActive && t>=loopB){ realAudio.currentTime=loopA; return; }
-    const idx=flat.findIndex(f=>t>=f.start && t<f.end);
+    let idx = -1;
+    for(let i=0; i<flat.length; i++){
+      const nextStart = (i < flat.length - 1) ? flat[i+1].start : (flat[i].end + 0.5);
+      if(t >= flat[i].start && t < nextStart){
+        idx = i;
+        break;
+      }
+    }
     if(idx>=0){
       highlightFret(flat[idx].string, flat[idx].fret);
       if(typeof updatePlayhead === "function") updatePlayhead(idx, true);
@@ -930,175 +937,102 @@ if(downloadTabBtn){
 
 // ---------- Song data ----------
 const ishqOhPriyaPriyaSong = {
-  title: "🎸 Oh Priya Priya (Ishq - 2012) — Full Acoustic Solo (Intro Solo Lead + Stanza + Chorus)",
+  id: "eb60bc12-eb03-4e2c-b1ca-2c6bd2e935f8",
+  guitar_audio_url: "/guitar-audio/eb60bc12-eb03-4e2c-b1ca-2c6bd2e935f8",
+  orig_audio_url: "/audio/eb60bc12-eb03-4e2c-b1ca-2c6bd2e935f8",
+  title: "🎸 Oh Priya Priya (Ishq - 2012) — Paul Acoustic Tabs (Lyrics Melody Lead)",
   key: "C Minor",
   bpm: 96,
-  strum: "Fingerstyle Solo (Signature Intro Riff + Singing Stanza + Chorus)",
+  strum: "Acoustic Solo Tabs in Tune with Song (10th-15th Fret Lead Box)",
   chords: ["Cm", "Bb", "Ab", "Gm"],
   sections: [
-    "Intro 1: Acoustic Guitar Signature Solo Lead (High E / B picking)",
-    "Intro 2: Lead Response & Resolution",
-    "Stanza 1: Praayam Ninnedo Saayam Adigindaa...",
-    "Stanza 2: Doobhuchulate Vayasu Aadindaa...",
-    "Stanza 3: Thulintha Peere Prema Anukunte...",
-    "Stanza 4: Naa Pedavi Ninne Dachukuntundii...",
-    "Chorus 1: Oh Priya Priya... O My Dear Priya...",
-    "Chorus 2: Nee Premalo Manase Munigindi Evelaa...",
-    "Refrain 1: Telusa Neekaina... Ontari Oohallo...",
-    "Refrain 2: Unnavu Oopirilo... Nuvvele Priya...",
-    "Verse 2: I Love You Ani Palikinadee... Ninu Taakina Gaajainaa...",
-    "Refrain 3: Aligina Naa Cheli Navvuloo... Nee Premani Chusthunnaa..."
+    "Chorus 1: Oh Priya Priya... (High e: 11-13-15-11)",
+    "Chorus 2: Oh my dear Priya... (B: 11-13-11, High e: 10-8-10-11)",
+    "Chorus 3: Oh Priya Priya... (High e: 11-13-15-11)",
+    "Chorus 4: Oh my dear Priya... (B: 11-13-11, High e: 10-8-10-11)",
+    "Stanza 1: Nee premalo manase... (High e: 11-10-11-13-11-10-8)",
+    "Stanza 2: Munigindevela... (High e: 11-10-11-13-11-10)",
+    "Stanza 3: Telusa neekaina... (High e: 11-13-11-10-10-11)",
+    "Stanza 4: Ontari oohallo... (High e: 10-10-10-8-8)",
+    "Stanza 5: Voopirilo nuvvele Priya... (High e: 11-11-10-8)"
   ],
   lines: [
-    // --- SECTION 1: SIGNATURE ACOUSTIC GUITAR INTRO SOLO LEAD (0:00 - 0:10) ---
+    // --- CHORUS 1: "Oh Priya Priya..." ---
     [
-      { word: "G4", pitch: "G4", string: 5, fret: 3, chord: "Cm", start: 0.20, end: 0.90, desc: "Fret 3 on high e (Signature intro picking with Cm root)" },
-      { word: "F4", pitch: "F4", string: 5, fret: 1, start: 0.90, end: 1.15, desc: "Fret 1 on high e" },
-      { word: "G4", pitch: "G4", string: 5, fret: 3, start: 1.15, end: 1.45, desc: "Fret 3 on high e" },
-      { word: "B4", pitch: "B4", string: 5, fret: 7, start: 1.45, end: 1.85, desc: "Fret 7 on high e" },
-      { word: "G4", pitch: "G4", string: 5, fret: 3, start: 1.85, end: 2.20, desc: "Fret 3 on high e" },
-      { word: "G#4", pitch: "G#4", string: 5, fret: 4, chord: "Bb", start: 2.20, end: 2.50, desc: "Fret 4 on high e with Bb bass" },
-      { word: "F#4", pitch: "F#4", string: 5, fret: 2, start: 2.50, end: 2.80, desc: "Fret 2 on high e" },
-      { word: "D#4", pitch: "Eb4", string: 4, fret: 4, start: 2.80, end: 3.10, desc: "Fret 4 on B" },
-      { word: "F4", pitch: "F4", string: 5, fret: 1, start: 3.10, end: 3.45, desc: "Fret 1 on high e" },
-      { word: "D#4", pitch: "Eb4", string: 4, fret: 4, start: 3.45, end: 3.80, desc: "Fret 4 on B" },
-      { word: "D4", pitch: "D4", string: 4, fret: 3, chord: "Gm", start: 3.80, end: 4.80, desc: "Fret 3 on B with Gm sustain" }
+      { word: "Oh", pitch: "Eb5", string: 5, fret: 11, chord: "Cm", start: 0.95, end: 1.40, desc: "11th fret high e (Vocal 'Oh' with Cm bass)" },
+      { word: "Pri-", pitch: "F5", string: 5, fret: 13, start: 1.40, end: 1.75, desc: "13th fret high e" },
+      { word: "-ya", pitch: "G5", string: 5, fret: 15, start: 1.75, end: 2.30, desc: "15th fret high e (Vocal peak vibrato)" },
+      { word: "Pri-ya", pitch: "Eb5", string: 5, fret: 11, chord: "Cm", start: 2.30, end: 3.00, desc: "11th fret high e" }
     ],
+    // --- CHORUS 2: "Oh my dear Priya..." ---
     [
-      { word: "G4", pitch: "G4", string: 5, fret: 3, chord: "Ab", start: 5.00, end: 5.45, desc: "Fret 3 on high e with Ab bass" },
-      { word: "G#4", pitch: "G#4", string: 5, fret: 4, start: 5.45, end: 5.75, desc: "Fret 4 on high e" },
-      { word: "G4", pitch: "G4", string: 5, fret: 3, start: 5.75, end: 6.05, desc: "Fret 3 on high e" },
-      { word: "F#4", pitch: "F#4", string: 5, fret: 2, start: 6.05, end: 6.35, desc: "Fret 2 on high e" },
-      { word: "G4", pitch: "G4", string: 5, fret: 3, start: 6.35, end: 6.70, desc: "Fret 3 on high e" },
-      { word: "B4", pitch: "B4", string: 5, fret: 7, start: 6.70, end: 7.10, desc: "Fret 7 on high e" },
-      { word: "G4", pitch: "G4", string: 5, fret: 3, chord: "Bb", start: 7.10, end: 7.50, desc: "Fret 3 on high e with Bb bass" },
-      { word: "F#4", pitch: "F#4", string: 5, fret: 2, start: 7.50, end: 7.80, desc: "Fret 2 on high e" },
-      { word: "D#4", pitch: "Eb4", string: 4, fret: 4, start: 7.80, end: 8.10, desc: "Fret 4 on B" },
-      { word: "F4", pitch: "F4", string: 5, fret: 1, start: 8.10, end: 8.45, desc: "Fret 1 on high e" },
-      { word: "F#4", pitch: "F#4", string: 5, fret: 2, start: 8.45, end: 8.75, desc: "Fret 2 on high e" },
-      { word: "F4", pitch: "F4", string: 5, fret: 1, chord: "Cm", start: 8.75, end: 10.20, desc: "Fret 1 on high e with ringing Cm chord" }
+      { word: "Oh", pitch: "Bb4", string: 4, fret: 11, chord: "Bb", start: 3.50, end: 3.75, desc: "11th fret B string" },
+      { word: "my", pitch: "C5", string: 4, fret: 13, start: 3.75, end: 4.05, desc: "13th fret B string" },
+      { word: "dear", pitch: "Bb4", string: 4, fret: 11, start: 4.05, end: 4.60, desc: "11th fret B string" },
+      { word: "Pri-", pitch: "D5", string: 5, fret: 10, chord: "Gm", start: 6.05, end: 6.35, desc: "10th fret high e" },
+      { word: "-ya", pitch: "C5", string: 5, fret: 8, start: 6.35, end: 6.65, desc: "8th fret high e" },
+      { word: "Pri-", pitch: "D5", string: 5, fret: 10, start: 6.65, end: 6.85, desc: "10th fret high e slide" },
+      { word: "-ya...", pitch: "Eb5", string: 5, fret: 11, chord: "Cm", start: 6.85, end: 8.00, desc: "11th fret high e ringing sustain" }
     ],
-
-    // --- SECTION 2: STANZA / VERSE (0:10 - 0:25) ---
+    // --- CHORUS 3: "Oh Priya Priya..." ---
     [
-      { word: "Praa-", pitch: "C4", string: 4, fret: 1, chord: "Cm", start: 10.50, end: 10.85, desc: "Fret 1 on B (Stanza downbeat with Cm bass)" },
-      { word: "-yam", pitch: "D4", string: 4, fret: 3, start: 10.85, end: 11.15, desc: "Fret 3 on B" },
-      { word: "nin-", pitch: "Eb4", string: 4, fret: 4, start: 11.15, end: 11.45, desc: "Fret 4 on B" },
-      { word: "-ne-", pitch: "Eb4", string: 4, fret: 4, start: 11.45, end: 11.75, desc: "Fret 4 on B" },
-      { word: "-do", pitch: "F4", string: 5, fret: 1, start: 11.75, end: 12.10, desc: "Fret 1 on high e" },
-      { word: "saa-", pitch: "Eb4", string: 4, fret: 4, chord: "Bb", start: 12.10, end: 12.45, desc: "Fret 4 on B with Bb bass" },
-      { word: "-yam", pitch: "D4", string: 4, fret: 3, start: 12.45, end: 12.75, desc: "Fret 3 on B" },
-      { word: "a-", pitch: "D4", string: 4, fret: 3, start: 12.75, end: 13.05, desc: "Fret 3 on B" },
-      { word: "-di-", pitch: "C4", string: 4, fret: 1, start: 13.05, end: 13.35, desc: "Fret 1 on B" },
-      { word: "-gin-", pitch: "C4", string: 4, fret: 1, start: 13.35, end: 13.65, desc: "Fret 1 on B" },
-      { word: "-daa...", pitch: "C4", string: 4, fret: 1, chord: "Cm", start: 13.65, end: 14.65, desc: "Fret 1 on B with sustained Cm root" }
+      { word: "Oh", pitch: "Eb5", string: 5, fret: 11, chord: "Cm", start: 10.80, end: 11.30, desc: "11th fret high e" },
+      { word: "Pri-", pitch: "F5", string: 5, fret: 13, start: 11.30, end: 11.75, desc: "13th fret high e" },
+      { word: "-ya", pitch: "G5", string: 5, fret: 15, start: 11.75, end: 12.20, desc: "15th fret high e" },
+      { word: "Pri-ya", pitch: "Eb5", string: 5, fret: 11, chord: "Cm", start: 12.20, end: 13.00, desc: "11th fret high e" }
     ],
+    // --- CHORUS 4: "Oh my dear Priya..." ---
     [
-      { word: "Doo-", pitch: "C4", string: 4, fret: 1, chord: "Ab", start: 14.85, end: 15.15, desc: "Fret 1 on B with Ab bass" },
-      { word: "-bhu-", pitch: "D4", string: 4, fret: 3, start: 15.15, end: 15.45, desc: "Fret 3 on B" },
-      { word: "-chu-", pitch: "Eb4", string: 4, fret: 4, start: 15.45, end: 15.75, desc: "Fret 4 on B" },
-      { word: "-la-", pitch: "F4", string: 5, fret: 1, start: 15.75, end: 16.05, desc: "Fret 1 on high e" },
-      { word: "-te", pitch: "G4", string: 5, fret: 3, start: 16.05, end: 16.40, desc: "Fret 3 on high e" },
-      { word: "va-", pitch: "F4", string: 5, fret: 1, chord: "Gm", start: 16.40, end: 16.70, desc: "Fret 1 on high e with Gm bass" },
-      { word: "-ya-", pitch: "Eb4", string: 4, fret: 4, start: 16.70, end: 17.00, desc: "Fret 4 on B" },
-      { word: "-su", pitch: "D4", string: 4, fret: 3, start: 17.00, end: 17.30, desc: "Fret 3 on B" },
-      { word: "aa-", pitch: "Eb4", string: 4, fret: 4, start: 17.30, end: 17.60, desc: "Fret 4 on B" },
-      { word: "-din-", pitch: "D4", string: 4, fret: 3, start: 17.60, end: 17.95, desc: "Fret 3 on B" },
-      { word: "-daa...", pitch: "C4", string: 4, fret: 1, chord: "Cm", start: 17.95, end: 19.00, desc: "Fret 1 on B with resonant Cm sustain" }
+      { word: "Oh", pitch: "Bb4", string: 4, fret: 11, chord: "Bb", start: 13.15, end: 13.65, desc: "11th fret B string" },
+      { word: "my", pitch: "C5", string: 4, fret: 13, start: 13.65, end: 13.95, desc: "13th fret B string" },
+      { word: "dear", pitch: "Bb4", string: 4, fret: 11, start: 13.95, end: 14.50, desc: "11th fret B string" },
+      { word: "Pri-", pitch: "D5", string: 5, fret: 10, chord: "Gm", start: 15.90, end: 16.25, desc: "10th fret high e" },
+      { word: "-ya", pitch: "C5", string: 5, fret: 8, start: 16.25, end: 16.65, desc: "8th fret high e" },
+      { word: "Pri-", pitch: "D5", string: 5, fret: 10, start: 16.65, end: 16.85, desc: "10th fret high e slide" },
+      { word: "-ya...", pitch: "Eb5", string: 5, fret: 11, chord: "Cm", start: 16.85, end: 18.00, desc: "11th fret high e sustain" }
     ],
+    // --- STANZA 1: "Nee premalo manase..." ---
     [
-      { word: "Thu-", pitch: "C4", string: 4, fret: 1, chord: "Cm", start: 19.20, end: 19.50, desc: "Fret 1 on B" },
-      { word: "-lin-", pitch: "D4", string: 4, fret: 3, start: 19.50, end: 19.80, desc: "Fret 3 on B" },
-      { word: "-tha", pitch: "Eb4", string: 4, fret: 4, start: 19.80, end: 20.10, desc: "Fret 4 on B" },
-      { word: "pee-", pitch: "Eb4", string: 4, fret: 4, start: 20.10, end: 20.40, desc: "Fret 4 on B" },
-      { word: "-re", pitch: "F4", string: 5, fret: 1, start: 20.40, end: 20.75, desc: "Fret 1 on high e" },
-      { word: "pre-", pitch: "Eb4", string: 4, fret: 4, chord: "Bb", start: 20.75, end: 21.05, desc: "Fret 4 on B with Bb bass" },
-      { word: "-ma", pitch: "D4", string: 4, fret: 3, start: 21.05, end: 21.35, desc: "Fret 3 on B" },
-      { word: "a-", pitch: "D4", string: 4, fret: 3, start: 21.35, end: 21.65, desc: "Fret 3 on B" },
-      { word: "-nu-", pitch: "C4", string: 4, fret: 1, start: 21.65, end: 21.95, desc: "Fret 1 on B" },
-      { word: "-kun-", pitch: "C4", string: 4, fret: 1, start: 21.95, end: 22.25, desc: "Fret 1 on B" },
-      { word: "-te...", pitch: "C4", string: 4, fret: 1, chord: "Cm", start: 22.25, end: 23.25, desc: "Fret 1 on B with Cm root" }
+      { word: "Nee", pitch: "Eb5", string: 5, fret: 11, chord: "Ab", start: 19.80, end: 20.30, desc: "11th fret high e (Stanza downbeat with Ab bass)" },
+      { word: "pre-", pitch: "D5", string: 5, fret: 10, start: 20.30, end: 20.75, desc: "10th fret high e" },
+      { word: "-ma-", pitch: "Eb5", string: 5, fret: 11, start: 20.75, end: 20.90, desc: "11th fret high e" },
+      { word: "-lo", pitch: "F5", string: 5, fret: 13, start: 20.90, end: 21.20, desc: "13th fret high e" },
+      { word: "ma-", pitch: "Eb5", string: 5, fret: 11, start: 21.20, end: 21.50, desc: "11th fret high e" },
+      { word: "-na-", pitch: "D5", string: 5, fret: 10, start: 21.50, end: 21.70, desc: "10th fret high e" },
+      { word: "-se...", pitch: "C5", string: 5, fret: 8, chord: "Bb", start: 21.70, end: 22.20, desc: "8th fret high e" }
     ],
+    // --- STANZA 2: "munigindevela..." ---
     [
-      { word: "Naa", pitch: "C4", string: 4, fret: 1, chord: "Ab", start: 23.45, end: 23.75, desc: "Fret 1 on B with Ab bass" },
-      { word: "pe-", pitch: "D4", string: 4, fret: 3, start: 23.75, end: 24.05, desc: "Fret 3 on B" },
-      { word: "-da-", pitch: "Eb4", string: 4, fret: 4, start: 24.05, end: 24.35, desc: "Fret 4 on B" },
-      { word: "-vi", pitch: "F4", string: 5, fret: 1, start: 24.35, end: 24.65, desc: "Fret 1 on high e" },
-      { word: "nin-", pitch: "G4", string: 5, fret: 3, start: 24.65, end: 25.00, desc: "Fret 3 on high e" },
-      { word: "-ne", pitch: "F4", string: 5, fret: 1, chord: "Gm", start: 25.00, end: 25.30, desc: "Fret 1 on high e with Gm bass" },
-      { word: "daa-", pitch: "Eb4", string: 4, fret: 4, start: 25.30, end: 25.60, desc: "Fret 4 on B" },
-      { word: "-chu-", pitch: "D4", string: 4, fret: 3, start: 25.60, end: 25.90, desc: "Fret 3 on B" },
-      { word: "-kun-", pitch: "Eb4", string: 4, fret: 4, start: 25.90, end: 26.20, desc: "Fret 4 on B" },
-      { word: "-tun-", pitch: "D4", string: 4, fret: 3, start: 26.20, end: 26.55, desc: "Fret 3 on B" },
-      { word: "-dii...", pitch: "C4", string: 4, fret: 1, chord: "Cm", start: 26.55, end: 27.60, desc: "Fret 1 on B with deep resonant Cm root" }
+      { word: "mu-", pitch: "Eb5", string: 5, fret: 11, chord: "Bb", start: 22.20, end: 22.75, desc: "11th fret high e with Bb bass" },
+      { word: "-ni-", pitch: "D5", string: 5, fret: 10, start: 22.75, end: 23.20, desc: "10th fret high e" },
+      { word: "-gin-", pitch: "Eb5", string: 5, fret: 11, start: 23.20, end: 23.40, desc: "11th fret high e" },
+      { word: "-dee...", pitch: "F5", string: 5, fret: 13, start: 23.40, end: 24.30, desc: "13th fret high e" },
+      { word: "ve-", pitch: "Eb5", string: 5, fret: 11, chord: "Gm", start: 24.65, end: 25.20, desc: "11th fret high e with Gm bass" },
+      { word: "-laa...", pitch: "D5", string: 5, fret: 10, start: 25.20, end: 25.70, desc: "10th fret high e" }
     ],
-
-    // --- SECTION 3: THE CHORUS (0:27 - 0:42) ---
+    // --- STANZA 3: "telusa neekaina..." ---
     [
-      { word: "Oh...", pitch: "G4", string: 5, fret: 3, chord: "Cm", start: 27.80, end: 28.35, desc: "Fret 3 on high e (Chorus downbeat with Cm thumb bass)" },
-      { word: "Pri-", pitch: "Bb4", string: 5, fret: 6, start: 28.35, end: 28.65, desc: "Fret 6 on high e" },
-      { word: "-ya", pitch: "G4", string: 5, fret: 3, start: 28.65, end: 28.95, desc: "Fret 3 on high e" },
-      { word: "Pri-", pitch: "F4", string: 5, fret: 1, start: 28.95, end: 29.25, desc: "Fret 1 on high e" },
-      { word: "-ya...", pitch: "Eb4", string: 4, fret: 4, chord: "Bb", start: 29.25, end: 30.15, desc: "Fret 4 on B with resonant Bb thumb bass" }
+      { word: "te-", pitch: "Eb5", string: 5, fret: 11, chord: "Gm", start: 25.70, end: 25.85, desc: "11th fret high e" },
+      { word: "-lu-", pitch: "F5", string: 5, fret: 13, start: 25.85, end: 26.15, desc: "13th fret high e" },
+      { word: "-sa", pitch: "Eb5", string: 5, fret: 11, start: 26.15, end: 26.40, desc: "11th fret high e" },
+      { word: "nee-", pitch: "D5", string: 5, fret: 10, start: 26.40, end: 27.15, desc: "10th fret high e" },
+      { word: "-kai-", pitch: "D5", string: 5, fret: 10, start: 27.15, end: 27.35, desc: "10th fret high e" },
+      { word: "-na...", pitch: "Eb5", string: 5, fret: 11, chord: "Ab", start: 27.35, end: 28.50, desc: "11th fret high e" }
     ],
+    // --- STANZA 4: "ontari oohallo..." ---
     [
-      { word: "O...", pitch: "F4", string: 5, fret: 1, chord: "Bb", start: 30.30, end: 30.65, desc: "Fret 1 on high e" },
-      { word: "my", pitch: "G4", string: 5, fret: 3, start: 30.65, end: 30.95, desc: "Fret 3 on high e" },
-      { word: "dear", pitch: "F4", string: 5, fret: 1, start: 30.95, end: 31.30, desc: "Fret 1 on high e" },
-      { word: "Pri-", pitch: "Eb4", string: 4, fret: 4, start: 31.30, end: 31.65, desc: "Fret 4 on B" },
-      { word: "-ya...", pitch: "D4", string: 4, fret: 3, chord: "Gm", start: 31.65, end: 32.55, desc: "Fret 3 on B with Gm thumb bass" }
+      { word: "on-", pitch: "D5", string: 5, fret: 10, chord: "Ab", start: 29.25, end: 29.55, desc: "10th fret high e" },
+      { word: "-ta-", pitch: "D5", string: 5, fret: 10, start: 29.55, end: 29.85, desc: "10th fret high e" },
+      { word: "-ri", pitch: "D5", string: 5, fret: 10, start: 29.85, end: 30.15, desc: "10th fret high e" },
+      { word: "oo-", pitch: "C5", string: 5, fret: 8, start: 30.15, end: 30.35, desc: "8th fret high e" },
+      { word: "-hal-lo...", pitch: "C5", string: 5, fret: 8, chord: "Gm", start: 30.35, end: 31.40, desc: "8th fret high e with Gm bass" }
     ],
+    // --- STANZA 5: "voopirilo nuvvele Priya..." ---
     [
-      { word: "Nee", pitch: "Eb4", string: 4, fret: 4, chord: "Ab", start: 32.70, end: 33.00, desc: "Fret 4 on B with Ab thumb bass" },
-      { word: "pre-", pitch: "F4", string: 5, fret: 1, start: 33.00, end: 33.30, desc: "Fret 1 on high e" },
-      { word: "-ma-", pitch: "Eb4", string: 4, fret: 4, start: 33.30, end: 33.60, desc: "Fret 4 on B" },
-      { word: "-lo", pitch: "D4", string: 4, fret: 3, start: 33.60, end: 33.90, desc: "Fret 3 on B" },
-      { word: "ma-", pitch: "C4", string: 4, fret: 1, start: 33.90, end: 34.20, desc: "Fret 1 on B" },
-      { word: "-na-", pitch: "Eb4", string: 4, fret: 4, start: 34.20, end: 34.50, desc: "Fret 4 on B" },
-      { word: "-se...", pitch: "D4", string: 4, fret: 3, chord: "Bb", start: 34.50, end: 35.25, desc: "Fret 3 on B with Bb harmony" }
-    ],
-    [
-      { word: "Mu-", pitch: "C4", string: 4, fret: 1, chord: "Gm", start: 35.40, end: 35.70, desc: "Fret 1 on B with Gm thumb bass" },
-      { word: "-ni-", pitch: "D4", string: 4, fret: 3, start: 35.70, end: 36.00, desc: "Fret 3 on B" },
-      { word: "-gin-", pitch: "Bb3", string: 3, fret: 3, start: 36.00, end: 36.30, desc: "Fret 3 on G" },
-      { word: "-di", pitch: "C4", string: 4, fret: 1, start: 36.30, end: 36.60, desc: "Fret 1 on B" },
-      { word: "e-", pitch: "D4", string: 4, fret: 3, start: 36.60, end: 36.90, desc: "Fret 3 on B" },
-      { word: "-ve-", pitch: "Eb4", string: 4, fret: 4, start: 36.90, end: 37.30, desc: "Fret 4 on B" },
-      { word: "-laa...", pitch: "C4", string: 4, fret: 1, chord: "Cm", start: 37.30, end: 38.40, desc: "Fret 1 on B with deep resonant Cm root" }
-    ],
-
-    // --- SECTION 4: REFRAIN (0:38 - 0:48) ---
-    [
-      { word: "Te-", pitch: "G4", string: 5, fret: 3, chord: "Cm", start: 38.60, end: 38.95, desc: "Fret 3 on high e with Cm thumb bass" },
-      { word: "-lu-", pitch: "Bb4", string: 5, fret: 6, start: 38.95, end: 39.25, desc: "Fret 6 on high e" },
-      { word: "-sa", pitch: "C5", string: 5, fret: 8, start: 39.25, end: 39.55, desc: "Fret 8 on high e" },
-      { word: "nee-", pitch: "Bb4", string: 5, fret: 6, start: 39.55, end: 39.85, desc: "Fret 6 on high e" },
-      { word: "-kai-", pitch: "G4", string: 5, fret: 3, start: 39.85, end: 40.15, desc: "Fret 3 on high e" },
-      { word: "-na...", pitch: "G4", string: 5, fret: 3, chord: "Bb", start: 40.15, end: 40.95, desc: "Fret 3 on high e with Bb bass" }
-    ],
-    [
-      { word: "On-", pitch: "F4", string: 5, fret: 1, chord: "Bb", start: 41.10, end: 41.40, desc: "Fret 1 on high e" },
-      { word: "-ta-", pitch: "G4", string: 5, fret: 3, start: 41.40, end: 41.70, desc: "Fret 3 on high e" },
-      { word: "-ri", pitch: "F4", string: 5, fret: 1, start: 41.70, end: 42.00, desc: "Fret 1 on high e" },
-      { word: "oo-", pitch: "D4", string: 4, fret: 3, start: 42.00, end: 42.30, desc: "Fret 3 on B" },
-      { word: "-hal-", pitch: "F4", string: 5, fret: 1, start: 42.30, end: 42.60, desc: "Fret 1 on high e" },
-      { word: "-lo...", pitch: "D4", string: 4, fret: 3, chord: "Gm", start: 42.60, end: 43.40, desc: "Fret 3 on B with Gm harmony" }
-    ],
-    [
-      { word: "Un-", pitch: "Eb4", string: 4, fret: 4, chord: "Ab", start: 43.55, end: 43.85, desc: "Fret 4 on B with Ab thumb bass" },
-      { word: "-na-", pitch: "F4", string: 5, fret: 1, start: 43.85, end: 44.15, desc: "Fret 1 on high e" },
-      { word: "-vu", pitch: "Eb4", string: 4, fret: 4, start: 44.15, end: 44.45, desc: "Fret 4 on B" },
-      { word: "oo-", pitch: "D4", string: 4, fret: 3, start: 44.45, end: 44.75, desc: "Fret 3 on B" },
-      { word: "-pi-", pitch: "C4", string: 4, fret: 1, start: 44.75, end: 45.05, desc: "Fret 1 on B" },
-      { word: "-ri-", pitch: "Eb4", string: 4, fret: 4, start: 45.05, end: 45.35, desc: "Fret 4 on B" },
-      { word: "-lo...", pitch: "D4", string: 4, fret: 3, chord: "Bb", start: 45.35, end: 46.10, desc: "Fret 3 on B" }
-    ],
-    [
-      { word: "Nuv-", pitch: "C4", string: 4, fret: 1, chord: "Gm", start: 46.25, end: 46.55, desc: "Fret 1 on B" },
-      { word: "-ve-", pitch: "D4", string: 4, fret: 3, start: 46.55, end: 46.85, desc: "Fret 3 on B" },
-      { word: "-le", pitch: "Bb3", string: 3, fret: 3, start: 46.85, end: 47.15, desc: "Fret 3 on G" },
-      { word: "Pri-", pitch: "D4", string: 4, fret: 3, start: 47.15, end: 47.50, desc: "Fret 3 on B" },
-      { word: "-ya~~~", pitch: "C4", string: 4, fret: 1, chord: "Cm", start: 47.50, end: 49.20, desc: "Fret 1 on B with resonant Cm finish" }
+      { word: "voo-", pitch: "Eb5", string: 5, fret: 11, chord: "Ab", start: 31.85, end: 32.35, desc: "11th fret high e" },
+      { word: "-pi-ri-lo", pitch: "Eb5", string: 5, fret: 11, start: 32.35, end: 32.65, desc: "11th fret high e" },
+      { word: "nuv-ve-le", pitch: "D5", string: 5, fret: 10, chord: "Bb", start: 32.65, end: 33.45, desc: "10th fret high e with Bb bass" },
+      { word: "Pri-ya~~~", pitch: "C5", string: 5, fret: 8, chord: "Cm", start: 33.50, end: 35.00, desc: "8th fret high e with resonant Cm root finale" }
     ]
   ]
 };
@@ -2909,6 +2843,7 @@ function renderTabView(){
       // Syllable / Word Above String
       const wordText = createEl("text", {
         x, y: 22, "font-size": 11.5, "font-weight": 700,
+        class: "tab-note-word",
         fill: "#e5b95f", "text-anchor": "middle"
       });
       wordText.textContent = tok.word || tok.pitch;
@@ -3273,7 +3208,7 @@ if(jumpStanzaBtn){
     let targetIdx = 0;
     for(let i=0; i<flat.length; i++){
       const w = (flat[i].word || "").toLowerCase();
-      if(w.includes("praa") || w.includes("yam") || (i >= 15 && flat[i].start && flat[i].start >= 10.0)){
+      if(w.includes("nee") || w.includes("pre") || (flat[i].start && flat[i].start >= 19.0)){
         targetIdx = i;
         break;
       }
@@ -3398,7 +3333,17 @@ songSel.onchange = async e => {
   renderNotation();
 };
 
-function refreshAll(){ renderSongSelect(); renderMeta(); renderChords(); renderNotation(); }
+function refreshAll(){
+  renderSongSelect();
+  renderMeta();
+  renderChords();
+  renderNotation();
+  if(currentSong && currentSong.guitar_audio_url){
+    realAudio.src = API_BASE_URL + currentSong.guitar_audio_url;
+    realAudio.style.display = "block";
+    wireAudioSync(currentSong);
+  }
+}
 refreshAll();
 
 document.getElementById("loopABtn").onclick=(e)=>{
