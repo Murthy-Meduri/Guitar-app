@@ -622,8 +622,10 @@ def process_song_from_audio(wav_path: str, language: Optional[str] = None, progr
         semitone_diff = (PITCH_CLASSES.index(note.note_name) - root_idx) % 12 if note.note_name in PITCH_CLASSES else 0
         sargam_syllable = SARGAM_NAMES[semitone_diff]
 
+        note_label = note.word if (note.word and note.word not in SARGAM_NAMES and note.word != "word") else note.note_name
         notes_out.append({
-            "word": sargam_syllable,
+            "word": note_label,
+            "sargam": sargam_syllable,
             "start": note.start,
             "end": note.end,
             "pitch": note.note_name,
